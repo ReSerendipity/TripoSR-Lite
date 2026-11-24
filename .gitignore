@@ -1,0 +1,33 @@
+# Local-only workspace artefacts
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Model weights and exports stay out of git
+models/
+output/
+exports/
+*.obj
+*.glb
+*.ply
+*.ckpt
+*.onnx
+*.safetensors
+
+# Node / build noise (not used by the server, kept out of the way)
+node_modules/
+dist/
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

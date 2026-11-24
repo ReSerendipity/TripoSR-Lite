@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeshMint-Lite · 单图生成 3D 网格</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%234fd1c5'/%3E%3Ctext x='32' y='45' font-size='34' text-anchor='middle' fill='%23041416' font-family='sans-serif'%3EM%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script type="importmap">
+    {"imports": {"three": "/assets/vendor/three.module.js", "three/addons/": "/assets/vendor/"}}
+  </script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">M</div>
+      <div>
+        <h1>MeshMint<span>-Lite</span></h1>
+        <p>单图 → 3D 网格 · 本地 TripoSR · 仅监听 127.0.0.1</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="pill" id="statusPill">连接中…</span>
+      <span class="pill pill--plain" id="verificationPill">CODE_READY_MODEL_UNTESTED</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="column">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>1 · 导入图片</h2>
+          <span class="hint" id="fileHint">PNG / JPEG · ≤ 20 MB</span>
+        </div>
+
+        <label class="dropzone" id="dropZone" for="fileInput">
+          <input id="fileInput" type="file" accept="image/png,image/jpeg" hidden>
+          <div class="drop-art">⊕</div>
+          <p class="drop-title">拖入图片，或点击选择</p>
+          <p class="drop-sub">单主体、背景干净、主体占画面 30–80% 时更稳</p>
+        </label>
+
+        <div class="image-row" id="imageRow" hidden>
+          <figure>
+            <img id="originalPreview" alt="原图预览">
+            <figcaption>原图</figcaption>
+          </figure>
+          <figure>
+            <img id="maskPreview" alt="前景提示">
+            <figcaption>前景提示（粗略估计）</figcaption>
+          </figure>
+        </div>
+
+        <div class="ratio" id="ratioBox" hidden>
+          <div class="ratio-head"><span>前景占比估计</span><strong id="ratioValue">—</strong></div>
+          <div class="ratio-bar"><i id="ratioBar"></i></div>
+          <p id="ratioAdvice">—</p>
+          <p class="ratio-bg" id="backgroundHint"></p>
+        </div>
+
+        <div class="progress-card" style="margin-top: 14px;">
+          <div class="progress-head">
+            <span id="stageLabel">等待任务</span>
+            <span class="pct" id="progressPct">0%</span>
+          </div>
+          <div class="bar"><i id="progressBar"></i></div>
+          <div class="stage-list" id="stageList">
+            <span class="stage-chip" data-stage="load_model">加载模型</span>
+            <span class="stage-chip" data-stage="preprocess">抠图缩放</span>
+            <span class="stage-chip" data-stage="forward">前向重建</span>
+            <span class="stage-chip" data-stage="extract">提取网格</span>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn--primary" id="generateBtn" disabled>生成 3D</button>
+            <button class="btn btn--danger" id="cancelBtn" disabled>取消</button>
+          </div>
+          <p class="note" id="jobNote">先选择一张图片。未下载权重时会返回 NOT_READY 与 DEMO 演示网格。</p>
+        </div>
+
+        <details class="model-card" id="modelCard" open>
+          <summary>模型状态 <span class="state" id="modelState">检测中…</span></summary>
+          <div class="model-body">
+            <div class="reason-list" id="modelReasons"></div>
+            <div class="cmd-box">
+              <label>权重下载命令（本仓库不含权重）</label>
+              <div class="cmd-row">
+                <code id="downloadCmd">—</code>
+                <button class="btn copy-btn" id="copyCmd" type="button">复制</button>
+              </div>
+            </div>
+            <dl class="model-meta">
+              <dt>代码</dt><dd id="metaCode">—</dd>
+              <dt>权重</dt><dd id="metaWeights">—</dd>
+              <dt>许可</dt><dd id="metaLicense">—</dd>
+              <dt>体积 / 显存</dt><dd id="metaSize">—</dd>
+              <dt>权重目录</dt><dd id="metaDir">—</dd>
+            </dl>
+            <div class="verification">
+              当前验证状态：<b id="metaVerification">CODE_READY_MODEL_UNTESTED</b><br>
+              真实 TripoSR 推理未执行（未下载权重）。本页面展示的网格若标记 DEMO，即为程序生成的占位网格，不是推理结果。
+            </div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="panel viewer-panel">
+      <div class="viewer-head">
+        <h2>2 · 本地 Three.js 预览</h2>
+        <div class="badges">
+          <span class="badge-demo" id="demoBadge" hidden>DEMO · 非推理结果</span>
+          <span class="mesh-meta" id="meshMeta">DEMO placeholder</span>
+        </div>
+      </div>
+      <div class="viewport" id="viewport">
+        <div class="viewer-empty" id="viewerEmpty">暂无网格<br><small>未就绪时会加载 DEMO 演示网格</small></div>
+        <div class="viewer-toolbar">
+          <button class="tool-btn" id="resetViewBtn" type="button">复位视角</button>
+          <button class="tool-btn" id="wireframeBtn" type="button">线框</button>
+        </div>
+        <div class="viewer-stats" id="meshStats"></div>
+        <div class="hint-3d">左键旋转 · 滚轮缩放 · 右键平移</div>
+      </div>
+      <div class="export-bar">
+        <button class="btn" id="exportObjBtn" type="button" disabled>导出 OBJ</button>
+        <button class="btn" id="exportGlbBtn" type="button" disabled>导出 GLB</button>
+        <span class="export-note" id="exportNote">导出需先生成任务；DEMO 文件会带 DEMO 标记</span>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+</div>
+<script type="module" src="/assets/app.js"></script>
+</body>
+</html>

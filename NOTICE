@@ -1,0 +1,35 @@
+MeshMint-Lite
+Copyright 2026 ReSerendipity
+
+This product includes original MeshMint-Lite shell code licensed under the
+Apache License, Version 2.0 (see LICENSE). The shell code is a local Web
+workbench: image validation, job lifecycle, in-memory mesh store, Three.js
+preview and OBJ/GLB export. It does not vendor upstream model code.
+
+Third-party components referenced (not bundled unless stated):
+
+1. TripoSR — https://github.com/VAST-AI-Research/TripoSR
+   Copyright Tripo AI and Stability AI.
+   Code and pretrained weights: MIT License.
+   This repository does NOT include the upstream code or the weights.
+   The model card states the model was trained on a curated subset of
+   Objaverse available under CC-BY; attribution is kept here.
+
+2. Objaverse — https://objaverse.allenai.org/ , dataset released under CC-BY.
+   Used only as TripoSR training data provenance; no dataset files are included.
+
+3. DINOv2 ViT-B/16 (facebook/dino-vitb16)
+   https://huggingface.co/facebook/dino-vitb16 — Apache-2.0.
+   Downloaded by transformers at first real inference; not bundled.
+
+4. rembg — https://github.com/danielgatis/rembg — MIT License.
+   u2net weights originate from U-2-Net (https://github.com/xuebinqin/U-2-Net,
+   Apache-2.0). Downloaded at first real inference; not bundled.
+
+5. Three.js — https://threejs.org/ — MIT License.
+   The browser build is vendored under meshmint/web/vendor/ with its licence
+   text in THIRD_PARTY_LICENSES/three-LICENSE.txt.
+
+No model weights, LoRA, VAE, datasets or generated user images are redistributed
+with this repository. Users download weights themselves and remain bound by the
+upstream licences.
