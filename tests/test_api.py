@@ -14,7 +14,7 @@ def test_health_reports_verification_state(client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["app"] == "MeshMint-Lite"
+    assert payload["app"] == "TripoSR-Lite"
     assert payload["verification_status"] == "CODE_READY_MODEL_UNTESTED"
 
 
@@ -89,9 +89,9 @@ def test_not_ready_job_flow_and_obj_export(client):
     obj = client.get(f"/api/jobs/{job['id']}/export?format=obj")
     assert obj.status_code == 200
     assert obj.headers["content-type"].startswith("text/plain")
-    assert "meshmint-demo.obj" in obj.headers["content-disposition"]
-    assert obj.headers["x-meshmint-demo"] == "true"
-    assert obj.content.startswith(b"# MeshMint-Lite OBJ export")
+    assert "triposr_lite-demo.obj" in obj.headers["content-disposition"]
+    assert obj.headers["x-triposr-demo"] == "true"
+    assert obj.content.startswith(b"# TripoSR-Lite OBJ export")
     assert obj.content.count(b"\nv ") == 642
     assert obj.content.count(b"\nf ") == 1280
 
@@ -103,7 +103,7 @@ def test_glb_export_header(client):
     assert glb.status_code == 200
     assert glb.headers["content-type"] == "model/gltf-binary"
     assert glb.content[:4] == b"glTF"
-    assert glb.headers["x-meshmint-source"] == "demo"
+    assert glb.headers["x-triposr-source"] == "demo"
 
 
 def test_invalid_export_format_is_rejected(client):
@@ -121,7 +121,7 @@ def test_unknown_job_is_404(client):
 
 
 def test_upload_limit_is_enforced_by_api(client, monkeypatch):
-    monkeypatch.setenv("MESHMINT_MAX_IMAGE_BYTES", "4096")
+    monkeypatch.setenv("TRIPOSR_MAX_IMAGE_BYTES", "4096")
     response = _upload(client, b"\x89PNG\r\n\x1a\n" + b"0" * 5000)
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "IMAGE_TOO_LARGE"
@@ -130,7 +130,7 @@ def test_upload_limit_is_enforced_by_api(client, monkeypatch):
 def test_static_ui_and_threejs_are_served(client):
     index = client.get("/")
     assert index.status_code == 200
-    assert "MeshMint" in index.text
+    assert "TripoSR" in index.text
     assert 'type="importmap"' in index.text
     assert "DEMO · 非推理结果" in index.text
 

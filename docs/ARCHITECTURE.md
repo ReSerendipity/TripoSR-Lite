@@ -28,14 +28,14 @@ FastAPI (127.0.0.1:7861)
 - 推理输出是上游 `trimesh.Trimesh`（顶点色）；直接驻留内存，不写用户磁盘。
 - OBJ 由本项目自写：保留 source/label 注释，`v` 行可带 RGB 扩展，`f v//vn`。
 - GLB 由 trimesh Scene 导出，节点名区分 `DEMO_NON_INFERENCE` 与 `TRIPOSR_MESH`。
-- 导出响应带 `X-MeshMint-Demo` / `X-MeshMint-Source`，DEMO 文件名固定 `meshmint-demo.*`。
+- 导出响应带 `X-TripoSR-Demo` / `X-TripoSR-Source`，DEMO 文件名固定 `triposr_lite-demo.*`。
 
 ## 与 Scan-Memories 的边界
 
-`Scan-Memories` 是 GLB/PLY 扫描浏览与回放工具（Vite + Three.js）。MeshMint-Lite 只负责「生成 + 导出」，不读取其目录、不写入其仓库、不共享运行时。导出的 GLB 可由用户自行拖入 Scan-Memories 浏览。
+`Scan-Memories` 是 GLB/PLY 扫描浏览与回放工具（Vite + Three.js）。TripoSR-Lite 只负责「生成 + 导出」，不读取其目录、不写入其仓库、不共享运行时。导出的 GLB 可由用户自行拖入 Scan-Memories 浏览。
 
 ## 安全默认值
 
-- 服务强制绑定回环地址；`python -m meshmint serve --host 0.0.0.0` 会被拒绝（退出码 2）。
+- 服务强制绑定回环地址；`python -m triposr_lite serve --host 0.0.0.0` 会被拒绝（退出码 2）。
 - 上传文件只做内存解析，不落盘；不调用任何云服务。
-- 权重目录与端口均可通过环境变量覆盖（`MESHMINT_MODEL_DIR`、`MESHMINT_TIMEOUT_S`），但默认不暴露到局域网。
+- 权重目录与端口均可通过环境变量覆盖（`TRIPOSR_MODEL_DIR`、`TRIPOSR_TIMEOUT_S`），但默认不暴露到局域网。

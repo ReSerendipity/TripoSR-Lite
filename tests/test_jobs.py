@@ -4,11 +4,11 @@ import time
 
 import pytest
 
-from meshmint.adapter import AdapterError, GenerationCancelled, InferenceResult, ProbeResult, TripoSRAdapter
-from meshmint.imaging import ImageInfo
-from meshmint.jobs import JobManager, JobStatus
-from meshmint.meshes import DEMO_NOTE, MeshRecord, build_demo_mesh
-from meshmint.store import MeshStore
+from triposr_lite.adapter import AdapterError, GenerationCancelled, InferenceResult, ProbeResult, TripoSRAdapter
+from triposr_lite.imaging import ImageInfo
+from triposr_lite.jobs import JobManager, JobStatus
+from triposr_lite.meshes import DEMO_NOTE, MeshRecord, build_demo_mesh
+from triposr_lite.store import MeshStore
 
 
 class ReadyAdapter:

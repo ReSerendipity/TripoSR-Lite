@@ -1,4 +1,4 @@
-# MeshMint-Lite
+# TripoSR-Lite
 
 本地单图生成 3D 网格的工作台：导入一张 PNG/JPEG，按需加载 [TripoSR](https://github.com/VAST-AI-Research/TripoSR)，在 Three.js 里预览，导出 OBJ / GLB。默认只监听 `127.0.0.1`，不上传图片、不调用云端 API。
 
@@ -21,11 +21,11 @@
 ## 快速开始
 
 ```powershell
-cd C:\Users\Doro\APP\repository\MeshMint-Lite
+cd C:\Users\Doro\APP\repository\TripoSR-Lite
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m meshmint serve --host 127.0.0.1 --port 7861
+python -m triposr_lite serve --host 127.0.0.1 --port 7861
 ```
 
 打开 <http://127.0.0.1:7861>。也可直接双击 `start-local.cmd`（首次会自动建 venv 并装依赖）。
@@ -33,7 +33,7 @@ python -m meshmint serve --host 127.0.0.1 --port 7861
 只查看模型状态（不下载权重、不启动服务）：
 
 ```powershell
-python -m meshmint probe
+python -m triposr_lite probe
 ```
 
 ## 模型下载（本仓库不含权重）
@@ -46,7 +46,7 @@ huggingface-cli download stabilityai/TripoSR --local-dir models/triposr --includ
 - `models/triposr/model.ckpt`：1.68 GB（1.56 GiB），MIT。
 - `models/triposr/config.yaml`：987 B，MIT。
 - 首次真实推理时 `transformers` 还会下载 `facebook/dino-vitb16`（约 0.33 GB，Apache-2.0）；`rembg` 会下载 `u2net`（约 176 MB）。磁盘建议预留 2.5 GB。
-- 目录可用 `MESHMINT_MODEL_DIR` 指向别处；权重不入库、不随安装包分发。
+- 目录可用 `TRIPOSR_MODEL_DIR` 指向别处；权重不入库、不随安装包分发。
 
 真实推理还需要上游代码与 CUDA 依赖（Python 3.10/3.11 推荐，本机 3.13 仅用于本项目的轻量测试）：
 
@@ -70,9 +70,9 @@ pip install git+https://github.com/tatsy/torchmcubes.git
 
 ## 导出
 
-- `OBJ`：`# MeshMint-Lite OBJ export` 文件头，含 source / label / 顶点面数、`v`（带 RGB 扩展色）、`vn`、`f v//vn`。
+- `OBJ`：`# TripoSR-Lite OBJ export` 文件头，含 source / label / 顶点面数、`v`（带 RGB 扩展色）、`vn`、`f v//vn`。
 - `GLB`：标准 glTF 2.0 二进制容器；节点名 `DEMO_NON_INFERENCE`（演示）或 `TRIPOSR_MESH`（推理结果）。
-- DEMO 导出的文件名固定为 `meshmint-demo.obj/.glb`，响应头带 `X-MeshMint-Demo: true`。
+- DEMO 导出的文件名固定为 `triposr_lite-demo.obj/.glb`，响应头带 `X-TripoSR-Demo: true`。
 - 当前版本不烘焙贴图（上游 `--bake-texture` 依赖 xatlas，未纳入首版）。
 
 ## HTTP 接口

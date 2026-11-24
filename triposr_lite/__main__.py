@@ -1,4 +1,4 @@
-"""CLI entry point: `python -m meshmint serve` and `python -m meshmint probe`."""
+"""CLI entry point: `python -m triposr_lite serve` and `python -m triposr_lite probe`."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="meshmint", description=f"{settings.APP_NAME} 本地工作台")
+    parser = argparse.ArgumentParser(prog="triposr_lite", description=f"{settings.APP_NAME} 本地工作台")
     sub = parser.add_subparsers(dest="command")
 
     serve = sub.add_parser("serve", help="启动本地 Web 工作台（仅回环地址）")

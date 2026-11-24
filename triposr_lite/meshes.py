@@ -148,7 +148,7 @@ def mesh_payload(record: MeshRecord) -> dict:
 
 
 def _safe_name(record: MeshRecord) -> str:
-    stem = "meshmint-demo" if record.is_demo else f"meshmint-{record.id}"
+    stem = "triposr_lite-demo" if record.is_demo else f"triposr_lite-{record.id}"
     return stem.replace(" ", "_")
 
 
@@ -162,7 +162,7 @@ def export_obj(record: MeshRecord, generated_at: str | None = None) -> bytes:
     timestamp = generated_at or utc_now()
 
     header = [
-        "# MeshMint-Lite OBJ export",
+        "# TripoSR-Lite OBJ export",
         f"# generated_at: {timestamp}",
         f"# source: {record.source}",
         f"# label: {record.label}",

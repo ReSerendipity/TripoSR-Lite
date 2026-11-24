@@ -1,4 +1,4 @@
-# 模型清单与许可（MeshMint-Lite）
+# 模型清单与许可（TripoSR-Lite）
 
 最后核查：2026-11-24（只读核对官方仓库与模型卡，未下载权重）。
 
@@ -25,7 +25,7 @@
 huggingface-cli download stabilityai/TripoSR --local-dir models/triposr --include config.yaml model.ckpt
 ```
 
-校验建议：`model.ckpt` 应约为 1.68 GB；明显偏小说明下载中断。服务会把小于 1 GB 的文件判为 `WEIGHT_TOO_SMALL`（阈值可用 `MESHMINT_MIN_CKPT_BYTES` 调整）。
+校验建议：`model.ckpt` 应约为 1.68 GB；明显偏小说明下载中断。服务会把小于 1 GB 的文件判为 `WEIGHT_TOO_SMALL`（阈值可用 `TRIPOSR_MIN_CKPT_BYTES` 调整）。
 
 ### 上游代码安装（真实推理必需）
 

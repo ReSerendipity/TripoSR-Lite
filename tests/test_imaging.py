@@ -2,7 +2,7 @@
 
 import pytest
 
-from meshmint import imaging, settings
+from triposr_lite import imaging, settings
 from helpers import alpha_png_bytes, gif_bytes, jpeg_bytes, png_bytes
 
 
@@ -39,7 +39,7 @@ def test_corrupt_bytes_are_unreadable():
 
 def test_size_limit_is_enforced(monkeypatch):
     data = png_bytes(200, 200)
-    monkeypatch.setenv("MESHMINT_MAX_IMAGE_BYTES", str(len(data) - 1))
+    monkeypatch.setenv("TRIPOSR_MAX_IMAGE_BYTES", str(len(data) - 1))
     with pytest.raises(imaging.ImageValidationError) as exc:
         imaging.validate_image_bytes(data, filename="e.png")
     assert exc.value.code == "IMAGE_TOO_LARGE"

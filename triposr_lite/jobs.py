@@ -169,7 +169,7 @@ class JobManager:
         thread = threading.Thread(
             target=self._run,
             args=(job, image_bytes),
-            name=f"meshmint-job-{job.id}",
+            name=f"triposr_lite-job-{job.id}",
             daemon=True,
         )
         thread.start()

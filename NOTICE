@@ -1,7 +1,7 @@
-MeshMint-Lite
+TripoSR-Lite
 Copyright 2026 ReSerendipity
 
-This product includes original MeshMint-Lite shell code licensed under the
+This product includes original TripoSR-Lite shell code licensed under the
 Apache License, Version 2.0 (see LICENSE). The shell code is a local Web
 workbench: image validation, job lifecycle, in-memory mesh store, Three.js
 preview and OBJ/GLB export. It does not vendor upstream model code.
@@ -27,7 +27,7 @@ Third-party components referenced (not bundled unless stated):
    Apache-2.0). Downloaded at first real inference; not bundled.
 
 5. Three.js — https://threejs.org/ — MIT License.
-   The browser build is vendored under meshmint/web/vendor/ with its licence
+   The browser build is vendored under triposr_lite/web/vendor/ with its licence
    text in THIRD_PARTY_LICENSES/three-LICENSE.txt.
 
 No model weights, LoRA, VAE, datasets or generated user images are redistributed

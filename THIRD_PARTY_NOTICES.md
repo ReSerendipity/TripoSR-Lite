@@ -1,4 +1,4 @@
-# Third-party notices — MeshMint-Lite
+# Third-party notices — TripoSR-Lite
 
 Shell code licence: Apache-2.0 (`LICENSE`). The table below separates **code**
 licences from **weight** licences; weights are never redistributed here.

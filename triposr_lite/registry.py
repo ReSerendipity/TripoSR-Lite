@@ -20,7 +20,7 @@ MODEL_CARD: dict = {
     "weights_license": "MIT",
     "license_note": (
         "TripoSR README states the MIT licence covers source code, pretrained models "
-        "and the online demo. MeshMint-Lite ships shell code only and never redistributes weights."
+        "and the online demo. TripoSR-Lite ships shell code only and never redistributes weights."
     ),
     "training_data": {
         "name": "Objaverse (curated subset)",

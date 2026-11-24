@@ -2,9 +2,9 @@
 
 import pytest
 
-import meshmint.adapter as adapter_mod
-from meshmint.adapter import AdapterError, TripoSRAdapter
-from meshmint.registry import MODEL_CARD, model_card
+import triposr_lite.adapter as adapter_mod
+from triposr_lite.adapter import AdapterError, TripoSRAdapter
+from triposr_lite.registry import MODEL_CARD, model_card
 
 
 def _no_runtime(monkeypatch):

@@ -1,4 +1,4 @@
-"""Runtime settings for MeshMint-Lite.
+"""Runtime settings for TripoSR-Lite.
 
 All values are read from the environment at call time so tests can override
 them without reloading modules. The server must default to loopback only.
@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-APP_NAME = "MeshMint-Lite"
+APP_NAME = "TripoSR-Lite"
 VERSION = "0.1.0"
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -32,17 +32,17 @@ DEFAULT_JOB_TIMEOUT_S = 180
 
 def model_dir() -> Path:
     """Directory that should contain config.yaml and model.ckpt."""
-    raw = os.environ.get("MESHMINT_MODEL_DIR", str(DEFAULT_MODEL_DIR))
+    raw = os.environ.get("TRIPOSR_MODEL_DIR", str(DEFAULT_MODEL_DIR))
     return Path(raw).expanduser()
 
 
 def max_image_bytes() -> int:
-    return int(os.environ.get("MESHMINT_MAX_IMAGE_BYTES", str(20 * 1024 * 1024)))
+    return int(os.environ.get("TRIPOSR_MAX_IMAGE_BYTES", str(20 * 1024 * 1024)))
 
 
 def job_timeout_s() -> int:
-    return int(os.environ.get("MESHMINT_TIMEOUT_S", str(DEFAULT_JOB_TIMEOUT_S)))
+    return int(os.environ.get("TRIPOSR_TIMEOUT_S", str(DEFAULT_JOB_TIMEOUT_S)))
 
 
 def min_model_ckpt_bytes() -> int:
-    return int(os.environ.get("MESHMINT_MIN_CKPT_BYTES", str(MIN_MODEL_CKPT_BYTES)))
+    return int(os.environ.get("TRIPOSR_MIN_CKPT_BYTES", str(MIN_MODEL_CKPT_BYTES)))

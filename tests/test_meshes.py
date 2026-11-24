@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import trimesh
 
-from meshmint.meshes import (
+from triposr_lite.meshes import (
     DEMO_NODE_NAME,
     MeshExportError,
     MeshRecord,
@@ -63,7 +63,7 @@ def test_obj_export_has_headers_and_valid_indices():
     text = data.decode("utf-8")
     lines = text.splitlines()
 
-    assert lines[0] == "# MeshMint-Lite OBJ export"
+    assert lines[0] == "# TripoSR-Lite OBJ export"
     assert "# source: demo" in text
     assert "# note: demo note" in text
     assert "# vertices: 642 faces: 1280" in text

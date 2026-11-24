@@ -1,4 +1,4 @@
-"""FastAPI application for the MeshMint-Lite local workbench."""
+"""FastAPI application for the TripoSR-Lite local workbench."""
 
 from __future__ import annotations
 
@@ -183,13 +183,13 @@ def create_app(
         except MeshExportError as exc:
             return error_response(500, exc.code, exc.message, exc.detail)
 
-        stem = "meshmint-demo" if record.is_demo else f"meshmint-{job.id}"
+        stem = "triposr_lite-demo" if record.is_demo else f"triposr_lite-{job.id}"
         filename = f"{stem}.{fmt}"
         media = "text/plain; charset=utf-8" if fmt == "obj" else "model/gltf-binary"
         headers = {
             "Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}",
-            "X-MeshMint-Demo": "true" if record.is_demo else "false",
-            "X-MeshMint-Source": record.source,
+            "X-TripoSR-Demo": "true" if record.is_demo else "false",
+            "X-TripoSR-Source": record.source,
             "Cache-Control": "no-store",
         }
         return Response(content=data, media_type=media, headers=headers)
