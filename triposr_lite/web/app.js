@@ -55,6 +55,7 @@ const state = {
   polling: false,
   objectUrl: null,
   modelCard: null,
+  ready: false,
 };
 
 /* ---------------------------------------------------------------- helpers */
@@ -105,6 +106,12 @@ function jobStatusVisual(job) {
 
 function fmtInt(value) {
   return Number(value || 0).toLocaleString('zh-CN');
+}
+
+function syncGenerateButton() {
+  const busy = Boolean(state.job) && ['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(state.job.status);
+  ui.generateBtn.disabled = busy || !state.file || !state.ready;
+  ui.generateBtn.title = state.ready ? '' : '模型未就绪，不能执行真实推理';
 }
 
 /* ---------------------------------------------------------------- three.js */
@@ -306,7 +313,7 @@ function renderModelCard(probe, model) {
   const details = probe.details || {};
   if (model) {
     ui.downloadCmd.textContent = model.download_command || '—';
-    ui.metaCode.textContent = `${model.code_url}（${model.code_license}）`;
+    ui.metaCode.textContent = `${model.upstream_code_url || model.code_url || '—'}（${model.code_license}）`;
     ui.metaWeights.textContent = `${model.upstream_weights_url}（${model.weights_license}，不入库）`;
     const aux = (model.auxiliary_weights || []).map((item) => `${item.id} ${item.license}`).join('；');
     ui.metaLicense.textContent = `代码 ${model.code_license} / 权重 ${model.weights_license}${aux ? `；附带 ${aux}` : ''}`;
@@ -321,6 +328,8 @@ function renderModelCard(probe, model) {
   } else {
     setPill('模型未就绪', 'warn');
   }
+  state.ready = probe.state === 'READY';
+  syncGenerateButton();
 }
 
 /* ---------------------------------------------------------------- progress */
@@ -355,8 +364,7 @@ function applyJob(payload, { includeProbe = false } = {}) {
   ui.jobNote.textContent = job.message || '';
 
   ui.cancelBtn.disabled = !['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(job.status);
-  const busy = ['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(job.status);
-  ui.generateBtn.disabled = busy || !state.file;
+  syncGenerateButton();
 
   if (payload.mesh) {
     renderMesh(payload.mesh);
@@ -433,8 +441,10 @@ async function handleFile(file) {
   }
   state.file = file;
   setPreview(file);
-  ui.generateBtn.disabled = false;
-  ui.jobNote.textContent = '图片已载入，等待生成。';
+  syncGenerateButton();
+  ui.jobNote.textContent = state.ready
+    ? '图片已载入，等待生成。'
+    : '模型未就绪：不会执行推理，预览区为 DEMO 演示网格。';
   try {
     await inspectFile(file);
   } catch (error) {
@@ -446,7 +456,7 @@ async function handleFile(file) {
 }
 
 async function submitJob() {
-  if (!state.file) return;
+  if (!state.file || !state.ready) return;
   const form = new FormData();
   form.append('file', state.file, state.file.name || 'upload.png');
   ui.generateBtn.disabled = true;
@@ -458,7 +468,7 @@ async function submitJob() {
   } catch (error) {
     toast(error.message, true);
     ui.jobNote.textContent = error.message;
-    ui.generateBtn.disabled = false;
+    syncGenerateButton();
     setPill('提交失败', 'err');
   }
 }
