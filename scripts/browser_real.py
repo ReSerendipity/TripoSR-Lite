@@ -232,6 +232,7 @@ def main(argv=None) -> int:
     status_payload: dict = {}
     probe_state = ""
     page_mesh_stats: dict = {}
+    layout: dict = {}
     error_msg = ""
     notes: list[str] = []
 
@@ -396,55 +397,62 @@ def main(argv=None) -> int:
             )
             shot("03-result.png")
 
-            with page.expect_download(timeout=120_000) as download_info:
-                page.click("#exportGlbBtn")
-            download = download_info.value
-            target = out_dir / (download.suggested_filename or "triposr_lite-mesh.glb")
-            download.save_as(str(target))
-            size = target.stat().st_size
-            checks["download_nonempty"] = size > 0
+            target = None
+            try:
+                if page.locator("#exportGlbBtn").is_disabled():
+                    raise RuntimeError("任务终态后导出 GLB 按钮仍为禁用")
+                with page.expect_download(timeout=120_000) as download_info:
+                    page.click("#exportGlbBtn")
+                download = download_info.value
+                target = out_dir / (download.suggested_filename or "triposr_lite-mesh.glb")
+                download.save_as(str(target))
+                checks["download_nonempty"] = target.stat().st_size > 0
+            except Exception as exc:  # noqa: BLE001 - the acceptance file must survive a broken download leg
+                error_msg = error_msg or f"GLB 下载失败：{type(exc).__name__}: {exc}"
 
-            structure = glb_structure(target)
-            stats = mesh_stats(target)
-            baseline_match = (
-                stats.get("vertices") == BASELINE["vertices"]
-                and stats.get("faces") == BASELINE["faces"]
-            )
-            artifacts = {
-                "file": target.name,
-                "bytes": size,
-                "sha256": sha256_file(target),
-                "glb": structure,
-                "mesh": stats,
-                "page_mesh_stats": page_mesh_stats,
-                "baseline": BASELINE,
-                "baseline_match": baseline_match,
-                "headers": {
-                    "X-TripoSR-Demo": export_headers.get("x-triposr-demo"),
-                    "X-TripoSR-Source": export_headers.get("x-triposr-source"),
-                },
-            }
-            demo_header = artifacts["headers"]["X-TripoSR-Demo"]
-            source_header = artifacts["headers"]["X-TripoSR-Source"]
-            checks["export_headers_ok"] = str(demo_header).lower() != "true" and source_header == "model"
-            checks["artifact_valid"] = bool(
-                structure.get("magic_ok")
-                and structure.get("positions")
-                and structure.get("indices")
-                and stats.get("vertices")
-                and stats.get("faces")
-                and stats.get("watertight")
-            )
-            if stats.get("error"):
-                error_msg = error_msg or f"GLB 回读失败：{stats['error']}"
-            elif not stats.get("watertight"):
-                error_msg = error_msg or "GLB 回读网格非 watertight"
-            if not baseline_match:
-                notes.append(
-                    f"顶点/面与基线不一致：{stats.get('vertices')}/{stats.get('faces')}"
-                    f" vs {BASELINE['vertices']}/{BASELINE['faces']}"
+            if target is not None:
+                size = target.stat().st_size
+                structure = glb_structure(target)
+                stats = mesh_stats(target)
+                baseline_match = (
+                    stats.get("vertices") == BASELINE["vertices"]
+                    and stats.get("faces") == BASELINE["faces"]
                 )
-            shot("04-downloaded.png")
+                artifacts = {
+                    "file": target.name,
+                    "bytes": size,
+                    "sha256": sha256_file(target),
+                    "glb": structure,
+                    "mesh": stats,
+                    "page_mesh_stats": page_mesh_stats,
+                    "baseline": BASELINE,
+                    "baseline_match": baseline_match,
+                    "headers": {
+                        "X-TripoSR-Demo": export_headers.get("x-triposr-demo"),
+                        "X-TripoSR-Source": export_headers.get("x-triposr-source"),
+                    },
+                }
+                demo_header = artifacts["headers"]["X-TripoSR-Demo"]
+                source_header = artifacts["headers"]["X-TripoSR-Source"]
+                checks["export_headers_ok"] = str(demo_header).lower() != "true" and source_header == "model"
+                checks["artifact_valid"] = bool(
+                    structure.get("magic_ok")
+                    and structure.get("positions")
+                    and structure.get("indices")
+                    and stats.get("vertices")
+                    and stats.get("faces")
+                    and stats.get("watertight")
+                )
+                if stats.get("error"):
+                    error_msg = error_msg or f"GLB 回读失败：{stats['error']}"
+                elif not stats.get("watertight"):
+                    error_msg = error_msg or "GLB 回读网格非 watertight"
+                if not baseline_match:
+                    notes.append(
+                        f"顶点/面与基线不一致：{stats.get('vertices')}/{stats.get('faces')}"
+                        f" vs {BASELINE['vertices']}/{BASELINE['faces']}"
+                    )
+                shot("04-downloaded.png")
 
         third_party = [n for n in network if not same_origin(n["url"])]
         checks["no_third_party_requests"] = not third_party

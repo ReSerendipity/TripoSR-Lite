@@ -126,6 +126,14 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def stage_input(image: Path, out: Path) -> Path:
+    """Copy the sample next to the outputs; skip when the app already staged it there."""
+    target = out / "input.png"
+    if image.resolve() != target.resolve():
+        shutil.copyfile(image, target)
+    return target
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", required=True)
@@ -169,8 +177,7 @@ def main() -> int:
         return 3
 
     # Input sample is fixed next to the outputs so the run is self-contained.
-    input_copy = out / "input.png"
-    shutil.copyfile(image, input_copy)
+    input_copy = stage_input(image, out)
     input_info = {
         "source": str(image),
         "path": str(input_copy),
