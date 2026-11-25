@@ -6,22 +6,36 @@
    ▼
 FastAPI (127.0.0.1:7861)
    ├── imaging.py     输入校验 + 粗略前景提示（非分割模型）
-   ├── adapter.py     TripoSR 就绪探测 + 真实推理调用链（惰性导入 torch/tsr）
+   ├── adapter.py     就绪探测（外部运行时子进程）+ 监督脚本子进程推理（应用进程不 import torch）
    ├── jobs.py        任务状态机（QUEUED/RUNNING/NOT_READY/DONE/FAILED/TIMEOUT/CANCELLED）
    ├── meshes.py      DEMO 网格、统计、OBJ/GLB 导出
    └── store.py       内存网格表（重启即释放）
 ```
+
+## 推理链路
+
+```
+FastAPI → adapter.generate()
+  → TRIPOSR_RUNTIME_PYTHON scripts/run_triposr_real.py
+      → nvidia-smi 闸门（无其他 compute app + 空闲显存 ≥ TRIPOSR_MIN_FREE_MIB）
+      → external/TripoSR/run.py（上游，未修改）
+  → results/app-<时间戳>-<uuid>/mesh.glb → trimesh 读回 → InferenceResult
+```
+
+- 应用进程与项目 `.venv` 不安装也不导入 torch；探测在外部运行时里执行 `import torch` / `import tsr.system`（短超时、结果缓存 `TRIPOSR_PROBE_TTL_S`）。
+- 每个任务独立目录，失败/取消/超时都保留 `request.json`、`run.log`、`supervisor.log`、`metrics.json` 等证据。
+- 进度只跟随 `run.log` 的上游阶段行，不按时间伪造。
 
 ## 状态机
 
 - `POST /api/jobs` 先校验图片，再探测模型。
 - 未就绪 → `NOT_READY`（终态）：不启动线程、不伪造推理，返回 `DEMO` 网格供预览。
 - 就绪 → `QUEUED` → 后台线程 `RUNNING` → 阶段回调更新进度。
-- `cancel`：排队阶段直接 `CANCELLED`；运行中置 `CANCEL_REQUESTED`，工作线程在阶段边界转 `CANCELLED`。
-- 超时：工作线程在每个阶段边界检查 deadline，超时转 `TIMEOUT`。
-- 上游异常 → `FAILED` + `error_code`（`NOT_READY` / `DEPENDENCY_MISSING` / `INFERENCE_FAILED` / `EMPTY_MESH`）。
+- `cancel`：排队阶段直接 `CANCELLED`；运行中置 `CANCEL_REQUESTED`，工作线程终止监督脚本子进程树后转 `CANCELLED`。
+- 超时：轮询中检查 deadline，超时终止子进程树并转 `TIMEOUT`，结果不写入网格表。
+- 上游异常 → `FAILED` + `error_code`（`NOT_READY` / `MISSING_*` / `RUNTIME_PROBE_FAILED` / `GPU_BUSY` / `INSUFFICIENT_VRAM` / `SUPERVISOR_FAILED` / `EMPTY_MESH`）。
 
-> 取消与超时都不能打断 GPU 单次前向，只在阶段之间生效；这是刻意如实暴露的限制。
+> 取消/超时通过终止子进程实现，但受 0.2 s 轮询与进程退出等待影响；GPU 当前前向不会被信号抢占。
 
 ## 网格与导出
 

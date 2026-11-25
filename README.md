@@ -4,7 +4,7 @@
 
 **当前验证状态：`MODEL_TESTED`（2026-11-25，RTX 5070 Ti Laptop 12 GB）** —— 官方 `run.py` + `stabilityai/TripoSR` 权重在本机完成真实单图 → 网格推理，导出 OBJ/GLB（42,076 顶点 / 84,156 面，watertight），证据见 [`reports/triposr/phase-c.md`](reports/triposr/phase-c.md)。
 
-注意：工作台自身的 `.venv`（Python 3.12.13）仍未安装 torch / 上游 `tsr`，所以应用内 `/api/model` 探测仍会报 `NOT_READY`；本轮真实推理跑在隔离环境 `external/TripoSR/.venv`。未就绪时界面显示 `NOT_READY`，预览区展示明确标注 `DEMO` 的程序生成占位网格，不冒充推理结果。
+注意：工作台自身的 `.venv`（Python 3.12.13）仍未安装 torch / 上游 `tsr`，但应用进程已不再 `import torch`：就绪探测改为在隔离运行时 `external/TripoSR/.venv` 里做短超时 `torch/tsr` 探测，推理则调用监督脚本子进程。**应用子进程链路已实现，真实浏览器验收待 R4-B**；未就绪时界面显示 `NOT_READY`，预览区展示明确标注 `DEMO` 的程序生成占位网格，不冒充推理结果。
 
 ## 边界
 
@@ -73,6 +73,14 @@ external\TripoSR\.venv\Scripts\python.exe scripts\run_triposr_real.py `
   --output-dir results\real-20261125-101344 --mc-resolution 256 --chunk-size 8192
 ```
 
+## 应用内推理链路（R4-A）
+
+- `adapter.py` 用 `TRIPOSR_RUNTIME_PYTHON`（默认 `external/TripoSR/.venv/Scripts/python.exe`）执行 `scripts/run_triposr_real.py`，参数为数组、`shell=False`；`PYTHONPATH` 的 CPU marching-cubes 垫片由监督脚本自己设置。
+- 每个任务在 `results/app-<YYYYMMDD-HHMMSS>-<uuid>/` 下留全套证据：`input.png`、`request.json`、`run.log`、`supervisor.log`、`gpu-before/after.json`、`metrics.json`、`mesh.glb/.obj`；失败或取消同样保留。
+- 进度来自 `run.log` 的上游阶段行（`Initializing model` / `Processing images` / `Running model` / `Extracting mesh`），不是计时假进度。
+- 取消/超时会终止整个子进程树；真实运行前仍由监督脚本执行「无其他计算进程 + 空闲显存 ≥ `TRIPOSR_MIN_FREE_MIB`（默认 7168 MiB）」硬闸门，`GPU_BUSY` / `INSUFFICIENT_VRAM` 直接失败，不降级。
+- 可用环境变量覆盖：`TRIPOSR_UPSTREAM_DIR`、`TRIPOSR_RUNTIME_PYTHON`、`TRIPOSR_SUPERVISOR`、`TRIPOSR_RESULTS_DIR`、`TRIPOSR_MIN_FREE_MIB`、`TRIPOSR_DEVICE`、`TRIPOSR_PROBE_TIMEOUT_S`、`TRIPOSR_PROBE_TTL_S`。
+
 ## 显存与性能（本机实测，2026-11-25）
 
 单张 `examples/chair.png`（512×512）、`mc-resolution=256`、`chunk-size=8192`、fp32、batch 1：
@@ -107,7 +115,7 @@ external\TripoSR\.venv\Scripts\python.exe scripts\run_triposr_real.py `
 | POST | `/api/inspect` | 校验图片 + 粗略前景提示（multipart `file`） |
 | POST | `/api/jobs` | 创建任务；未就绪返回 `NOT_READY` + DEMO 网格 |
 | GET | `/api/jobs/{id}` | 任务状态、进度、网格 |
-| POST | `/api/jobs/{id}/cancel` | 请求取消（阶段边界生效） |
+| POST | `/api/jobs/{id}/cancel` | 请求取消；子进程运行中会终止整个进程树 |
 | GET | `/api/jobs/{id}/mesh` | 网格 JSON（positions / indices / colors / stats） |
 | GET | `/api/jobs/{id}/export?format=obj\|glb` | 导出文件 |
 
@@ -134,10 +142,10 @@ python -m pytest tests -q
 
 ## 已知限制
 
-1. 应用内推理链路（FastAPI → `adapter.py` → `tsr`）尚未在项目 `.venv` 跑通：该 venv（3.12.13）没有 torch/`tsr`，`/api/model` 仍报 `NOT_READY`；本轮验证的是上游 `run.py` 命令行路径。
+1. 应用子进程链路已实现，真实浏览器验收待 R4-B：`adapter.py` 不再在应用进程 import torch，探测与推理都在 `TRIPOSR_RUNTIME_PYTHON`（默认 `external/TripoSR/.venv/Scripts/python.exe`）里执行；应用内真实模型 + 浏览器闭环尚未验收，`verification_status` 仍是 `CODE_READY_MODEL_UNTESTED`。
 2. Python 3.12 与上游钉死的 `transformers==4.35.0` 不兼容（见上），实测用 4.36.2；`trimesh==4.0.5` 与 numpy 2 不兼容，实测用 5.2.2。都属于依赖层兼容修正，未改 TripoSR 逻辑。
 3. 本机没有 CUDA Toolkit，`torchmcubes` 只能走 CPU 提取；与 CUDA 版 marching cubes 未做逐位比对，拓扑结果来自 scikit-image（Lewiner 算法）。
-4. 取消/超时只在阶段边界生效，GPU 单次前向不可抢占。
+4. 取消/超时依赖终止监督脚本子进程树（Windows `taskkill /T`），不是 GPU 前向抢占：信号到达后有最多约 0.2s 轮询延迟与进程退出等待。
 5. 网格只驻留内存，重启服务即释放；大网格（mc 256）预览 JSON 体积较大，未做简化。
 6. 前景提示只是颜色/alpha 统计，不等于 rembg 的抠图结果。
 7. 生成质量受输入影响大：单主体、清晰、背景干净更稳；不承诺任意图片都能得到好模型。

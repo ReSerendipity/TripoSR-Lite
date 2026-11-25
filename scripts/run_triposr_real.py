@@ -7,6 +7,9 @@ This script is a supervisor, not a re-implementation: it executes
 
 It records: GPU state before loading, peak GPU memory (nvidia-smi sampling), upstream
 stage timings parsed from the official log, exit code, output files and mesh checks.
+
+`--no-remove-bg` / `--foreground-ratio` are forwarded to run.py so the app adapter can
+honour its own background-removal switch; defaults match the previous CLI behaviour.
 """
 
 from __future__ import annotations
@@ -95,6 +98,30 @@ def parse_stage_times(log_text: str) -> dict:
     return timings
 
 
+def effective_device(requested: str) -> str:
+    """Upstream silently falls back to CPU without CUDA; ask a throwaway interpreter.
+
+    The probe runs before the nvidia-smi gate so no CUDA context of our own can
+    show up as a competing compute process.
+    """
+    if not requested.startswith("cuda"):
+        return requested
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", "import torch; print(1 if torch.cuda.is_available() else 0)"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        if proc.returncode == 0 and proc.stdout.strip() == "1":
+            return requested
+    except Exception:  # noqa: BLE001 - a missing/broken torch is reported by run.py itself
+        pass
+    return "cpu"
+
+
 def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -107,6 +134,9 @@ def main() -> int:
     parser.add_argument("--chunk-size", type=int, default=8192)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--min-free-mib", type=int, default=7168, help="hard gate before model load")
+    parser.add_argument("--model-dir", default=str(PROJECT / "models" / "triposr"), help="config.yaml + model.ckpt directory")
+    parser.add_argument("--no-remove-bg", action="store_true", help="forwarded to run.py; skip rembg cutout")
+    parser.add_argument("--foreground-ratio", type=float, default=0.85, help="forwarded to run.py when background removal is on")
     parser.add_argument("--hf-endpoint", default=os.environ.get("HF_ENDPOINT", "https://hf-mirror.com"))
     args = parser.parse_args()
 
@@ -122,6 +152,8 @@ def main() -> int:
 
     started = time.time()
     started_at = time.strftime("%Y-%m-%d %H:%M:%S")
+    model_dir = Path(args.model_dir).expanduser().resolve()
+    device = effective_device(args.device)
     before = gpu_snapshot()
     write_json(out / "gpu-before.json", before)
     if before["compute_apps"]:
@@ -152,7 +184,7 @@ def main() -> int:
         str(RUN_PY),
         str(input_copy),
         "--pretrained-model-name-or-path",
-        str(PROJECT / "models" / "triposr"),
+        str(model_dir),
         "--output-dir",
         str(upstream_out),
         "--mc-resolution",
@@ -160,10 +192,14 @@ def main() -> int:
         "--chunk-size",
         str(args.chunk_size),
         "--device",
-        args.device,
+        device,
         "--model-save-format",
         "glb",
     ]
+    if args.no_remove_bg:
+        cmd.append("--no-remove-bg")
+    else:
+        cmd.extend(["--foreground-ratio", str(args.foreground_ratio)])
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(COMPAT) + os.pathsep + env.get("PYTHONPATH", "")
@@ -197,10 +233,13 @@ def main() -> int:
         "input": input_info,
         "params": {
             "device": args.device,
+            "device_effective": device,
             "mc_resolution": args.mc_resolution,
             "chunk_size": args.chunk_size,
             "save_format": "glb",
-            "remove_background": True,
+            "remove_background": not args.no_remove_bg,
+            "foreground_ratio": args.foreground_ratio,
+            "model_dir": str(model_dir),
             "cond_image_size": 512,
             "precision": "float32",
             "hf_endpoint": args.hf_endpoint,
@@ -223,6 +262,7 @@ def main() -> int:
 
     if proc.returncode != 0:
         metrics["status"] = "BLOCKED"
+        metrics["reason"] = f"upstream exit {proc.returncode}"
         metrics["log_tail"] = "\n".join(log_text.splitlines()[-40:])
         write_json(out / "metrics.json", metrics)
         print(f"FAILED: upstream exit code {proc.returncode}; see {log_path}", file=sys.stderr)

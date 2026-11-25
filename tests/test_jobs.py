@@ -108,7 +108,7 @@ def test_cancel_moves_running_job_to_cancelled():
     cancelled = _wait_terminal(manager, job.id)
     assert cancelled.status == JobStatus.CANCELLED
     assert cancelled.cancel_requested is True
-    assert "阶段边界" in cancelled.message
+    assert "已取消" in cancelled.message
 
 
 def test_timeout_is_reported_and_result_is_discarded():

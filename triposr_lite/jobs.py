@@ -246,7 +246,7 @@ class JobManager:
             self._set(
                 job,
                 status=JobStatus.CANCELLED,
-                message=f"已取消：{exc}。GPU 单次前向不可抢占，取消只在阶段边界生效。",
+                message=f"已取消：{exc}。",
                 cancel_requested=True,
                 duration_s=round(time.monotonic() - started, 2),
             )
@@ -255,7 +255,7 @@ class JobManager:
                 job,
                 status=JobStatus.TIMEOUT,
                 error_code="TIMEOUT",
-                message=f"超时：{exc}。超时同样只在阶段边界生效。",
+                message=f"超时：{exc}。结果已丢弃，不写入网格。",
                 duration_s=round(time.monotonic() - started, 2),
             )
         except AdapterError as exc:

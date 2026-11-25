@@ -68,7 +68,7 @@ pip install "transformers==4.36.2" "rembg" "trimesh>=4.5" "scikit-image" "omegac
 
 ## 4. 未执行项
 
-- 应用内推理链路（FastAPI → `adapter.py` → `tsr`）：项目 `.venv`（3.12.13）没有 torch/`tsr`，`/api/model` 仍报 `NOT_READY`；本轮只验证上游 `run.py` 命令行路径。
+- 应用内推理链路：应用子进程链路已实现（`adapter.py` 在 `TRIPOSR_RUNTIME_PYTHON` 里探测并调用监督脚本），真实浏览器验收待 R4-B；项目 `.venv` 仍不安装 torch/`tsr`。
 - CUDA 版 `torchmcubes`：本机无 CUDA Toolkit，未编译；CPU（scikit-image）与 CUDA 结果未做逐位比对。
 - 多图 batch、`mc-resolution=512`、`--bake-texture` 纹理烘焙、`--render` NeRF 视频：未测。
 - 8 GB / 16 GB / 24 GB 其他显卡：未测。
