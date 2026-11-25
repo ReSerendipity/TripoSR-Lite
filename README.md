@@ -4,7 +4,7 @@
 
 **当前验证状态：`MODEL_TESTED`（2026-11-25，RTX 5070 Ti Laptop 12 GB）** —— 官方 `run.py` + `stabilityai/TripoSR` 权重在本机完成真实单图 → 网格推理，导出 OBJ/GLB（42,076 顶点 / 84,156 面，watertight），证据见 [`reports/triposr/phase-c.md`](reports/triposr/phase-c.md)。
 
-注意：工作台自身的 `.venv`（Python 3.12.13）仍未安装 torch / 上游 `tsr`，但应用进程已不再 `import torch`：就绪探测改为在隔离运行时 `external/TripoSR/.venv` 里做短超时 `torch/tsr` 探测，推理则调用监督脚本子进程。**应用子进程链路已实现，真实浏览器验收待 R4-B**；未就绪时界面显示 `NOT_READY`，预览区展示明确标注 `DEMO` 的程序生成占位网格，不冒充推理结果。
+注意：工作台自身的 `.venv`（Python 3.12.13）仍未安装 torch / 上游 `tsr`，但应用进程已不再 `import torch`：就绪探测改为在隔离运行时 `external/TripoSR/.venv` 里做短超时 `torch/tsr` 探测，推理则调用监督脚本子进程。R4-B 已完成真实 GLB 浏览器闭环；R5-A 补齐 OBJ 下载校验与失败分支证据（本阶段不加载模型、不下载权重）。未就绪时界面显示 `NOT_READY`，预览区展示明确标注 `DEMO` 的程序生成占位网格，不冒充推理结果。
 
 ## 边界
 
@@ -81,6 +81,32 @@ external\TripoSR\.venv\Scripts\python.exe scripts\run_triposr_real.py `
 - 取消/超时会终止整个子进程树；真实运行前仍由监督脚本执行「无其他计算进程 + 空闲显存 ≥ `TRIPOSR_MIN_FREE_MIB`（默认 7168 MiB）」硬闸门，`GPU_BUSY` / `INSUFFICIENT_VRAM` 直接失败，不降级。
 - 可用环境变量覆盖：`TRIPOSR_UPSTREAM_DIR`、`TRIPOSR_RUNTIME_PYTHON`、`TRIPOSR_SUPERVISOR`、`TRIPOSR_RESULTS_DIR`、`TRIPOSR_MIN_FREE_MIB`、`TRIPOSR_DEVICE`、`TRIPOSR_PROBE_TIMEOUT_S`、`TRIPOSR_PROBE_TTL_S`。
 
+## 浏览器验收（R4-B / R5-A）
+
+`scripts/browser_real.py` 用系统 Edge（Playwright，headless 1440×1000）跑页面闭环。准备阶段只读 NOT_READY 页面，不触发任务：
+
+```powershell
+# 终端 A：未就绪开发模式（指向不含权重的目录即可）
+$env:TRIPOSR_MODEL_DIR = "$PWD\models\triposr-notready"
+.\.venv\Scripts\python.exe -m uvicorn triposr_lite.app:app --host 127.0.0.1 --port 8876
+
+# 终端 B：验收（解释器需带 playwright；本机借用 VOSR2-Flash 的 .venv）
+python scripts\browser_real.py --base-url http://127.0.0.1:8876 `
+  --input external/TripoSR/examples/chair.png --prepare-only `
+  --output-dir results\browser-prep
+```
+
+真实阶段要求 `/api/model` 为 READY，会点击 `#exportObjBtn` / `#exportGlbBtn`：
+
+```powershell
+python scripts\browser_real.py --base-url http://127.0.0.1:8876 `
+  --input external/TripoSR/examples/chair.png --format both `
+  --output-dir results\browser-real --timeout 900
+```
+
+- `--format obj|glb|both`（默认 both）。OBJ 校验：首行 `# TripoSR-Lite OBJ export`、`# source: model`、标签与对象名不含 `DEMO`、`v` / `f` 计数非空且与页面统计一致、响应头 `X-TripoSR-Demo: false`。
+- 任务失败或下载失败时仍写 `acceptance.json`、`metrics.json`、`network.json`、`console.log`、`pageerror.log`；`acceptance.json` 的 `flow` / `job` / `error` 记录失败原因。
+
 ## 显存与性能（本机实测，2026-11-25）
 
 单张 `examples/chair.png`（512×512）、`mc-resolution=256`、`chunk-size=8192`、fp32、batch 1：
@@ -128,7 +154,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests -q
 ```
 
-覆盖输入校验、前景提示、模型探测、任务状态机（取消 / 超时 / 失败）、DEMO 分支、OBJ/GLB 结构与回读、API 端到端。测试不需要 GPU、不需要权重，也不联网。
+覆盖输入校验、前景提示、模型探测、任务状态机（取消 / 超时 / 失败）、DEMO 分支、OBJ/GLB 结构与回读、API 端到端、失败分支证据（`termination.json` / 不写 mesh / 409 导出）以及浏览器脚本的 OBJ 头解析与格式选择。测试不需要 GPU、不需要权重，也不联网；当前 **83 项**全部通过（2026-11-25）。
 
 ## 许可
 
@@ -142,10 +168,17 @@ python -m pytest tests -q
 
 ## 已知限制
 
-1. 应用子进程链路已实现，真实浏览器验收待 R4-B：`adapter.py` 不再在应用进程 import torch，探测与推理都在 `TRIPOSR_RUNTIME_PYTHON`（默认 `external/TripoSR/.venv/Scripts/python.exe`）里执行；应用内真实模型 + 浏览器闭环尚未验收，`verification_status` 仍是 `CODE_READY_MODEL_UNTESTED`。
+1. 真实浏览器闭环已在 R4-B 通过（GLB）；R5-A 增加 OBJ 下载分支，但**真实模型下的 OBJ 下载尚未复跑**（计划 R5-B）。`adapter.py` 不在应用进程 import torch，探测与推理都在 `TRIPOSR_RUNTIME_PYTHON`（默认 `external/TripoSR/.venv/Scripts/python.exe`）里执行；`verification_status` 仍保守保留为 `CODE_READY_MODEL_UNTESTED`。
 2. Python 3.12 与上游钉死的 `transformers==4.35.0` 不兼容（见上），实测用 4.36.2；`trimesh==4.0.5` 与 numpy 2 不兼容，实测用 5.2.2。都属于依赖层兼容修正，未改 TripoSR 逻辑。
 3. 本机没有 CUDA Toolkit，`torchmcubes` 只能走 CPU 提取；与 CUDA 版 marching cubes 未做逐位比对，拓扑结果来自 scikit-image（Lewiner 算法）。
 4. 取消/超时依赖终止监督脚本子进程树（Windows `taskkill /T`），不是 GPU 前向抢占：信号到达后有最多约 0.2s 轮询延迟与进程退出等待。
 5. 网格只驻留内存，重启服务即释放；大网格（mc 256）预览 JSON 体积较大，未做简化。
 6. 前景提示只是颜色/alpha 统计，不等于 rembg 的抠图结果。
 7. 生成质量受输入影响大：单主体、清晰、背景干净更稳；不承诺任意图片都能得到好模型。
+
+## 未测边界（R5-A 后）
+
+- 真实模型下的 OBJ 浏览器下载未复跑（R5-A 仅跑 `--prepare-only` 与 fake supervisor 单测）。
+- 取消、超时、GPU busy、显存不足仍为 fake supervisor / 假进程单测；真实推理下未演练（留待 R5-B 串行 GPU，启动前重测显存与计算进程）。
+- 仅 `examples/chair.png` 单样本；其他主体、分辨率、JPEG 输入与极端前景占比未覆盖。
+- CPU 推理路径、多任务并发、`MESH_EVICTED` 未覆盖；浏览器仅 Edge headless 1440×1000。

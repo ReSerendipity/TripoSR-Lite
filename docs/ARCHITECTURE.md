@@ -26,6 +26,15 @@ FastAPI → adapter.generate()
 - 每个任务独立目录，失败/取消/超时都保留 `request.json`、`run.log`、`supervisor.log`、`metrics.json` 等证据。
 - 进度只跟随 `run.log` 的上游阶段行，不按时间伪造。
 
+## 浏览器验收
+
+`scripts/browser_real.py` 通过系统 Edge（Playwright）驱动页面：
+
+- `--prepare-only`：只验证 NOT_READY 语义、预览、生成与导出按钮定位/禁用，不发 `POST /api/jobs`。
+- 真实阶段：上传样本 → 点击 `#generateBtn` → 等待终态 → 下载 `#exportObjBtn` / `#exportGlbBtn`；`--format obj|glb|both`（默认 both）。
+- OBJ 校验首行 `# TripoSR-Lite OBJ export`、`# source: model`、标签/对象名无 `DEMO`、`v`/`f` 非空且与页面统计一致；GLB 校验容器头、POSITION/索引计数与 trimesh 回读。
+- 任务失败或下载失败时仍写 `acceptance.json`、`metrics.json`、`network.json`、`console.log`、`pageerror.log`，`flow` / `job` / `error` 记录失败原因。
+
 ## 状态机
 
 - `POST /api/jobs` 先校验图片，再探测模型。
@@ -40,7 +49,7 @@ FastAPI → adapter.generate()
 ## 网格与导出
 
 - 推理输出是上游 `trimesh.Trimesh`（顶点色）；直接驻留内存，不写用户磁盘。
-- OBJ 由本项目自写：保留 source/label 注释，`v` 行可带 RGB 扩展，`f v//vn`。
+- OBJ 由本项目自写：首行固定 `# TripoSR-Lite OBJ export`，`# source:` 只会是 `demo` 或 `model`，保留 `# vertices: N faces: M`，`v` 行可带 RGB 扩展，`f v//vn`。
 - GLB 由 trimesh Scene 导出，节点名区分 `DEMO_NON_INFERENCE` 与 `TRIPOSR_MESH`。
 - 导出响应带 `X-TripoSR-Demo` / `X-TripoSR-Source`，DEMO 文件名固定 `triposr_lite-demo.*`。
 

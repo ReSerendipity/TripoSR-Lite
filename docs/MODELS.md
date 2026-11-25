@@ -68,7 +68,7 @@ pip install "transformers==4.36.2" "rembg" "trimesh>=4.5" "scikit-image" "omegac
 
 ## 4. 未执行项
 
-- 应用内推理链路：应用子进程链路已实现（`adapter.py` 在 `TRIPOSR_RUNTIME_PYTHON` 里探测并调用监督脚本），真实浏览器验收待 R4-B；项目 `.venv` 仍不安装 torch/`tsr`。
+- 应用内推理链路：R4-B 已通过真实 GLB 浏览器闭环；R5-A 增加 OBJ 下载分支与失败分支证据，真实模型下的 OBJ 下载待 R5-B 复跑。项目 `.venv` 仍不安装 torch/`tsr`。
 - CUDA 版 `torchmcubes`：本机无 CUDA Toolkit，未编译；CPU（scikit-image）与 CUDA 结果未做逐位比对。
 - 多图 batch、`mc-resolution=512`、`--bake-texture` 纹理烘焙、`--render` NeRF 视频：未测。
 - 8 GB / 16 GB / 24 GB 其他显卡：未测。

@@ -92,6 +92,8 @@ def test_not_ready_job_flow_and_obj_export(client):
     assert "triposr_lite-demo.obj" in obj.headers["content-disposition"]
     assert obj.headers["x-triposr-demo"] == "true"
     assert obj.content.startswith(b"# TripoSR-Lite OBJ export")
+    assert b"# source: demo" in obj.content
+    assert b"# label: DEMO" in obj.content
     assert obj.content.count(b"\nv ") == 642
     assert obj.content.count(b"\nf ") == 1280
 

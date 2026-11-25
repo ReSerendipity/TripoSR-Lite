@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import triposr_lite.adapter as adapter_mod
-from triposr_lite.adapter import AdapterError, TripoSRAdapter
+from triposr_lite.adapter import AdapterError, GenerationCancelled, TripoSRAdapter
 from triposr_lite.imaging import ImageInfo
 from triposr_lite.jobs import JobManager, JobStatus
 from triposr_lite.meshes import DEMO_NOTE, MeshRecord, build_demo_mesh
@@ -190,10 +190,18 @@ def test_gpu_gate_is_a_hard_failure_without_fallback(tmp_path, monkeypatch, mode
     assert failed.error_code == code
     assert failed.mesh_id is None
     assert failed.demo is False
+    assert "export" not in failed.as_dict()
     assert manager.store.get(f"job-{job.id}") is None
     artifact = Path(failed.error_detail["detail"]["artifact_dir"])
     metrics = json.loads((artifact / "metrics.json").read_text(encoding="utf-8"))
     assert metrics["status"] == "BLOCKED"
+    assert failed.error_detail["detail"]["exit_code"] == 3
+    assert failed.error_detail["detail"]["status"] == "BLOCKED"
+    assert (artifact / "request.json").is_file()
+    assert (artifact / "supervisor.log").is_file()
+    assert not (artifact / "mesh.glb").exists()
+    assert not (artifact / "mesh.obj").exists()
+    assert not (artifact / "termination.json").exists(), "hard gate failure is not a cancel/timeout"
 
 
 def test_cancel_terminates_supervisor_and_discards_result(tmp_path, monkeypatch):
@@ -224,6 +232,12 @@ def test_cancel_terminates_supervisor_and_discards_result(tmp_path, monkeypatch)
     assert (artifact / "request.json").is_file()
     assert (artifact / "termination.json").is_file()
     assert (artifact / "run.log").is_file()
+    termination = json.loads((artifact / "termination.json").read_text(encoding="utf-8"))
+    assert termination["reason"] == "GenerationCancelled"
+    assert termination["supervisor_started"] is True
+    assert isinstance(termination.get("pid"), int)
+    assert not (artifact / "mesh.glb").exists()
+    assert not (artifact / "mesh.obj").exists()
     time.sleep(1.0)
     assert not (artifact / "finished.marker").exists(), "supervisor outlived the cancel"
     assert manager.store.get(f"job-{job.id}") is None
@@ -243,5 +257,29 @@ def test_timeout_terminates_supervisor_and_discards_result(tmp_path, monkeypatch
     artifacts = list((tmp_path / "results").glob("app-*"))
     assert len(artifacts) == 1
     assert (artifacts[0] / "termination.json").is_file()
+    termination = json.loads((artifacts[0] / "termination.json").read_text(encoding="utf-8"))
+    assert termination["reason"] == "GenerationTimeout"
+    assert termination["supervisor_started"] is True
+    assert isinstance(termination.get("pid"), int)
+    assert not (artifacts[0] / "mesh.glb").exists()
+    assert not (artifacts[0] / "mesh.obj").exists()
     time.sleep(1.0)
     assert not (artifacts[0] / "finished.marker").exists(), "supervisor outlived the timeout"
+
+
+def test_cancel_before_supervisor_launch_still_writes_termination(tmp_path):
+    adapter = build_ready_adapter(tmp_path)
+
+    with pytest.raises(GenerationCancelled):
+        adapter.generate(png_bytes(), "photo.png", should_cancel=lambda: True)
+
+    artifacts = list((tmp_path / "results").glob("app-*"))
+    assert len(artifacts) == 1
+    artifact = artifacts[0]
+    termination = json.loads((artifact / "termination.json").read_text(encoding="utf-8"))
+    assert termination["reason"] == "GenerationCancelled"
+    assert termination["supervisor_started"] is False
+    assert (artifact / "request.json").is_file()
+    assert not (artifact / "supervisor.log").exists()
+    assert not (artifact / "mesh.glb").exists()
+    assert not (artifact / "mesh.obj").exists()

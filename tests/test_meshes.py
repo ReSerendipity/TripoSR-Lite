@@ -26,7 +26,7 @@ def _record(source: str = "demo", mesh=None) -> MeshRecord:
         mesh=mesh if mesh is not None else build_demo_mesh(),
         source=source,
         label="DEMO" if source == "demo" else "TripoSR",
-        note="demo note",
+        note="demo note" if source == "demo" else "上游 TripoSR 真实推理输出（本机执行）。",
     )
 
 
@@ -128,6 +128,18 @@ def test_model_record_gets_non_demo_node_name():
     data = export_glb(record)
     assert "TRIPOSR_MESH" in inspect_glb(data)["node_names"]
     assert inspect_glb(data)["node_names"] != [DEMO_NODE_NAME]
+
+
+def test_model_obj_export_marks_source_model_and_no_demo():
+    data = export_obj(_record(source="model"))
+    text = data.decode("utf-8")
+
+    assert text.splitlines()[0] == "# TripoSR-Lite OBJ export"
+    assert "# source: model" in text
+    assert "# label: TripoSR" in text
+    assert "DEMO" not in text.upper()
+    assert "o TRIPOSR_MESH" in text
+    assert "# vertices: 642 faces: 1280" in text
 
 
 def test_empty_mesh_export_is_rejected():
