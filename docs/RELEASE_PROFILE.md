@@ -61,6 +61,7 @@
 
 - MUI2、`RequestExecutionLevel user`、`InstallDir "$LOCALAPPDATA\Programs\TripoSR-Lite"`，无需管理员。
 - **安装器为引导式**：`TripoSR-Lite-Setup-v<version>.exe` 内嵌壳 exe 与独立 `7za.exe`；`TripoSR-Lite-Data.7z.001..NNN` 必须与 Setup 同目录（或 `data\` 子目录）。原因：NSIS 单文件安装包上限约 2GB，本包外部推理运行时约 5.1GB，无法内嵌；数据分卷仍是本产品的完整应用负载。
+- `7za.exe` 不纳入源码仓库；构建时通过 `-SevenZipStandalone <path>` 显式指定仓外工具路径（只读内嵌进 Setup）。
 - 解压：`"$EXEDIR\7za.exe" x "<data>\TripoSR-Lite-Data.7z.001" -o"$INSTDIR"`，失败即 Abort 并提示 SHA256 校验。
 - 快捷方式：桌面 + 开始菜单；卸载信息写 `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TripoSR-Lite`（DisplayName/DisplayVersion/UninstallString/EstimatedSize）。
 - 安装时创建 `%LOCALAPPDATA%\TripoSR-Lite\{models\triposr,results,logs}`，覆盖安装不清理。

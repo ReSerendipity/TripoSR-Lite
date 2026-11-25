@@ -89,7 +89,6 @@ function Find-Standalone7za([string]$Explicit) {
     $candidates = @(
         $Explicit,
         $env:TRIPOSR_7ZA,
-        (Join-Path $Root 'scripts\installer\7za.exe'),
         'C:\Program Files\7-Zip\7za.exe',
         'C:\Program Files (x86)\7-Zip\7za.exe'
     )
@@ -97,7 +96,7 @@ function Find-Standalone7za([string]$Explicit) {
         if ($c -and (Test-Path -LiteralPath $c)) { return (Resolve-Path -LiteralPath $c).Path }
     }
     throw ('未找到独立版 7za.exe。NSIS 内嵌工具必须是单文件版（7z.exe 依赖 7z.dll，嵌入后会静默失败）；' +
-        '请用 -SevenZipStandalone 指定，或把 7za.exe 放到 scripts\installer\。')
+        '请用 -SevenZipStandalone <path> 指定。')
 }
 function Get-ShellVersion([string]$ExePath) {
     return (Get-Item -LiteralPath $ExePath).VersionInfo.ProductVersion
