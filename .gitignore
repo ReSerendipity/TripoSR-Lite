@@ -31,3 +31,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+
+# Upstream checkouts and real-inference artefacts stay local
+external/
+results/

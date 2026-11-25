@@ -2,7 +2,9 @@
 
 本地单图生成 3D 网格的工作台：导入一张 PNG/JPEG，按需加载 [TripoSR](https://github.com/VAST-AI-Research/TripoSR)，在 Three.js 里预览，导出 OBJ / GLB。默认只监听 `127.0.0.1`，不上传图片、不调用云端 API。
 
-**当前验证状态：`CODE_READY_MODEL_UNTESTED`** —— 源码、自动化测试、开发模式冒烟与导出格式已完成；真实 TripoSR 推理**未执行**（本轮未下载权重）。未就绪时界面显示 `NOT_READY`，预览区展示明确标注 `DEMO` 的程序生成占位网格，不冒充推理结果。
+**当前验证状态：`MODEL_TESTED`（2026-11-25，RTX 5070 Ti Laptop 12 GB）** —— 官方 `run.py` + `stabilityai/TripoSR` 权重在本机完成真实单图 → 网格推理，导出 OBJ/GLB（42,076 顶点 / 84,156 面，watertight），证据见 [`reports/triposr/phase-c.md`](reports/triposr/phase-c.md)。
+
+注意：工作台自身的 `.venv`（Python 3.12.13）仍未安装 torch / 上游 `tsr`，所以应用内 `/api/model` 探测仍会报 `NOT_READY`；本轮真实推理跑在隔离环境 `external/TripoSR/.venv`。未就绪时界面显示 `NOT_READY`，预览区展示明确标注 `DEMO` 的程序生成占位网格，不冒充推理结果。
 
 ## 边界
 
@@ -39,37 +41,57 @@ python -m triposr_lite probe
 ## 模型下载（本仓库不含权重）
 
 ```powershell
-pip install "huggingface_hub[cli]"
-huggingface-cli download stabilityai/TripoSR --local-dir models/triposr --include config.yaml model.ckpt
+pip install "huggingface_hub"
+python -c "from huggingface_hub import snapshot_download; snapshot_download('stabilityai/TripoSR', local_dir='models/triposr', allow_patterns=['config.yaml','model.ckpt'])"
 ```
 
-- `models/triposr/model.ckpt`：1.68 GB（1.56 GiB），MIT。
-- `models/triposr/config.yaml`：987 B，MIT。
-- 首次真实推理时 `transformers` 还会下载 `facebook/dino-vitb16`（约 0.33 GB，Apache-2.0）；`rembg` 会下载 `u2net`（约 176 MB）。磁盘建议预留 2.5 GB。
+- `models/triposr/model.ckpt`：1,677,246,742 B（1.56 GiB），SHA256 `429e2c6b22a0923967459de24d67f05962b235f79cde6b032aa7ed2ffcd970ee`，MIT。
+- `models/triposr/config.yaml`：987 B，SHA256 `74ca708ce086bf68e97709ea6b3d91f14717921c04691e84043f0eb8fcc68e62`，MIT。
+- 2026-11-25 实测：直连 `huggingface.co` 在本机 TLS 校验失败，改用 `HF_ENDPOINT=https://hf-mirror.com` 下载成功（约 1 分钟，27–40 MB/s）。实际 endpoint 记录在 `models/triposr/weights-manifest.json`。
+- `snapshot_download(local_dir=...)` 会在 `models/triposr/` 留下指向 `~/.cache/huggingface` 的**符号链接**；要让目录自包含，需把 blob 复制成真实文件（本机已这样做）。
+- `transformers` 只会拉 `facebook/dino-vitb16` 的 `config.json`（454 B，Apache-2.0）——DINOv2 权重就在 TripoSR 的 `model.ckpt` state_dict 里，不会单独下载 0.33 GB。
+- `rembg` 需要 `u2net.onnx`（175,997,641 B，MD5 `60024c5c889badc19c04ad937298a77b`，与 rembg 内置校验值一致）。本机 GitHub 直连被 TLS 代理拦截，改用 `curl --ssl-no-revoke` 下到 `~/.u2net/u2net.onnx` 后 rembg 直接复用。
 - 目录可用 `TRIPOSR_MODEL_DIR` 指向别处；权重不入库、不随安装包分发。
 
-真实推理还需要上游代码与 CUDA 依赖（Python 3.10/3.11 推荐，本机 3.13 仅用于本项目的轻量测试）：
+真实推理实测环境（2026-11-25，`MODEL_TESTED`）：`external/TripoSR/.venv`，Python **3.12.10**，torch **2.11.0+cu128**（从本机已有安装复制进来，未重新下载 2.75 GB wheel）：
 
 ```powershell
-git clone https://github.com/VAST-AI-Research/TripoSR
-pip install -e TripoSR
-# torch（与本机 CUDA 大版本一致）、transformers==4.35.0、rembg
-pip install git+https://github.com/tatsy/torchmcubes.git
+git clone --depth 1 https://github.com/VAST-AI-Research/TripoSR external/TripoSR
+# 建 .venv 后复用本机 torch，再装其余依赖
+pip install "transformers==4.36.2" "rembg" "trimesh>=4.5" "scikit-image" "omegaconf==2.3.0" "einops==0.7.0" "huggingface_hub==0.20.3" "xatlas==0.0.9" "moderngl==5.10.0"
 ```
 
-`torchmcubes` 在 Windows 需要 MSVC Build Tools + CUDA Toolkit 编译；官方 README 有专门的故障排查段。编译失败时上游网格提取会报错，本项目会把它作为 `INFERENCE_FAILED` 如实反馈，不会伪造成功。
+上游钉死的 `transformers==4.35.0` 在 Python 3.12 上装不出来：它要求 `tokenizers<0.15`，而 0.14.x 没有 cp312 wheel；实测 4.35.0 一导入就拒绝 0.15.2。改用 **4.36.2**（同样只用到 DINOv2 视觉塔），`pip check` 通过。`trimesh==4.0.5` 与 numpy 2 不兼容（GLB 导出时 `ndarray.ptp` 报错），实测升到 **5.2.2**。
 
-## 显存与性能（官方口径，本机未实测）
+`torchmcubes` 的 CUDA 扩展在本机**编译失败**：没有 CUDA Toolkit/nvcc，CMake 在 torch 的 `Caffe2Config.cmake` 处报 "installed Caffe2 uses CUDA but I cannot find the CUDA libraries"。因此网格提取改走 CPU：`scripts/_compat/torchmcubes` 通过 `PYTHONPATH` 提供 `torchmcubes.marching_cubes`（scikit-image 实现），**上游 `run.py` 一行未改**；DINOv2、Transformer、triplane 解码与密度/颜色查询仍是真实模型在 GPU 上跑。
 
-| 项 | 值 | 依据 |
+实测命令（官方 `run.py` + 监督脚本记录显存/耗时）：
+
+```powershell
+external\TripoSR\.venv\Scripts\python.exe scripts\run_triposr_real.py `
+  --image external\TripoSR\examples\chair.png `
+  --output-dir results\real-20261125-101344 --mc-resolution 256 --chunk-size 8192
+```
+
+## 显存与性能（本机实测，2026-11-25）
+
+单张 `examples/chair.png`（512×512）、`mc-resolution=256`、`chunk-size=8192`、fp32、batch 1：
+
+| 项 | 值 | 备注 |
 |---|---|---|
-| 显存 | 约 6 GB（单图默认参数） | TripoSR README 官方声明 |
-| 速度 | A100 上前向 < 0.5 s | 官方声明；消费卡未测 |
-| 输入 | 统一 512×512（`cond_image_size`） | 上游 `config.yaml` |
-| 网格 | marching cubes 默认 256，chunk 8192 | 上游 `run.py` 默认值 |
+| GPU | RTX 5070 Ti Laptop，12,227 MiB | 加载前空闲 11,944 MiB，无其他 compute app |
+| 峰值显存 | **3,236 MiB**（nvidia-smi 0.5 s 采样，25 点） | 远低于官方「约 6 GB」口径 |
+| 模型加载 | 4.99 s | 含 DINOv2 `config.json` + `model.ckpt` 反序列化 |
+| 抠图 + 缩放 | 0.67 s | rembg u2net，512×512 |
+| 前向（triplane 解码） | 2.69 s | 冷启动那次为 9.77 s |
+| 网格提取 | 2.84 s | **CPU** scikit-image marching cubes，mc 256 |
+| 导出 | <0.01 s（GLB） | 之后用 trimesh 转出 OBJ |
+| 端到端 | 15.89 s 上游进程 / 18.62 s 含监督 | 退出码 0 |
+| 输出 | 42,076 顶点 / 84,156 面 | GLB 1,684,080 B；OBJ 4,544,198 B；watertight、winding 一致、带顶点色 |
 
 ## 导出
 
+- 下面描述的是**工作台自身**的导出格式；上游 `run.py` 实测导出的是 trimesh 原生文件（OBJ 头 `# https://github.com/mikedh/trimesh`、GLB 为 glTF 2.0），同样带顶点色。
 - `OBJ`：`# TripoSR-Lite OBJ export` 文件头，含 source / label / 顶点面数、`v`（带 RGB 扩展色）、`vn`、`f v//vn`。
 - `GLB`：标准 glTF 2.0 二进制容器；节点名 `DEMO_NON_INFERENCE`（演示）或 `TRIPOSR_MESH`（推理结果）。
 - DEMO 导出的文件名固定为 `triposr_lite-demo.obj/.glb`，响应头带 `X-TripoSR-Demo: true`。
@@ -112,9 +134,9 @@ python -m pytest tests -q
 
 ## 已知限制
 
-1. 真实推理未执行：没有权重、没有安装上游 `tsr` 与 torch 推理栈。
-2. 本机 Python 3.13 与上游钉死的 `transformers==4.35.0`/旧版 torch 不兼容，真实推理需另建 3.10/3.11 环境。
-3. `torchmcubes` 的 Windows 编译是最大不确定项；`rembg` 首跑需联网下载 u2net。
+1. 应用内推理链路（FastAPI → `adapter.py` → `tsr`）尚未在项目 `.venv` 跑通：该 venv（3.12.13）没有 torch/`tsr`，`/api/model` 仍报 `NOT_READY`；本轮验证的是上游 `run.py` 命令行路径。
+2. Python 3.12 与上游钉死的 `transformers==4.35.0` 不兼容（见上），实测用 4.36.2；`trimesh==4.0.5` 与 numpy 2 不兼容，实测用 5.2.2。都属于依赖层兼容修正，未改 TripoSR 逻辑。
+3. 本机没有 CUDA Toolkit，`torchmcubes` 只能走 CPU 提取；与 CUDA 版 marching cubes 未做逐位比对，拓扑结果来自 scikit-image（Lewiner 算法）。
 4. 取消/超时只在阶段边界生效，GPU 单次前向不可抢占。
 5. 网格只驻留内存，重启服务即释放；大网格（mc 256）预览 JSON 体积较大，未做简化。
 6. 前景提示只是颜色/alpha 统计，不等于 rembg 的抠图结果。
