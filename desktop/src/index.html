@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TripoSR-Lite 正在启动</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #080f18;
+    --card: #0f1a26;
+    --line: #22354a;
+    --text: #e8f2fb;
+    --muted: #8aa3ba;
+    --accent: #22c7d4;
+    --accent2: #8b7bff;
+    --ok: #3ddba0;
+    --err: #ff7b8a;
+    --warn: #ffc857;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    background: radial-gradient(1200px 700px at 15% 0%, #12283a 0%, var(--bg) 60%);
+    color: var(--text);
+  }
+  .card {
+    width: min(600px, 92vw); padding: 32px 32px 24px;
+    background: linear-gradient(180deg, rgba(22,40,58,.92), rgba(15,26,38,.96));
+    border: 1px solid var(--line); border-radius: 18px;
+    box-shadow: 0 24px 80px rgba(0,0,0,.5);
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .mark {
+    width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center;
+    font-weight: 800; letter-spacing: .02em; font-size: 18px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #06121a;
+  }
+  h1 { margin: 0; font-size: 20px; letter-spacing: .01em; }
+  .brand p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .status { margin-top: 26px; display: flex; align-items: flex-start; gap: 12px; }
+  .spinner {
+    width: 18px; height: 18px; margin-top: 3px; flex: none;
+    border-radius: 50%;
+    border: 2px solid rgba(34,199,212,.25); border-top-color: var(--accent);
+    animation: spin .9s linear infinite;
+  }
+  .spinner.ok { border-color: rgba(61,219,160,.25); border-top-color: var(--ok); animation-duration: 1.4s; }
+  .spinner[hidden] { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #statusText { margin: 0; font-size: 15px; line-height: 1.5; }
+  #modelText { margin: 6px 0 0; font-size: 13px; line-height: 1.6; color: var(--warn); white-space: pre-wrap; }
+  #modelText[hidden] { display: none; }
+  #errorText { margin: 8px 0 0; color: var(--err); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+  .actions { margin-top: 18px; display: flex; gap: 10px; }
+  .actions[hidden] { display: none; }
+  button {
+    border: 0; border-radius: 10px; padding: 10px 16px; font-size: 13px; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), #2ea6e8); color: #041018; font-weight: 600;
+  }
+  button.secondary { background: #17293c; color: var(--text); border: 1px solid var(--line); font-weight: 400; }
+  button:disabled { opacity: .6; cursor: default; }
+  dl.meta { margin: 24px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 12px; }
+  dl.meta > div { display: flex; gap: 12px; margin-top: 8px; }
+  dt { flex: none; width: 76px; color: var(--muted); }
+  dd { margin: 0; word-break: break-all; color: #c9d9ea; }
+  .hint { margin: 20px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <span class="mark">3D</span>
+      <div>
+        <h1>TripoSR-Lite</h1>
+        <p>单图重建 3D 工作台 · 图片不出本机</p>
+      </div>
+    </div>
+
+    <div class="status">
+      <div class="spinner" id="spinner"></div>
+      <div>
+        <p id="statusText">正在启动本地服务…</p>
+        <p id="modelText" hidden></p>
+        <p id="errorText" hidden></p>
+      </div>
+    </div>
+
+    <div class="actions" id="actions" hidden>
+      <button id="retry">重试启动</button>
+      <button id="openModel" class="secondary">打开模型目录</button>
+    </div>
+
+    <dl class="meta">
+      <div><dt>版本</dt><dd id="version">—</dd></div>
+      <div><dt>模型目录</dt><dd id="modelDir">—</dd></div>
+      <div><dt>推理运行时</dt><dd id="runtime">—</dd></div>
+    </dl>
+
+    <p class="hint" id="hint">
+      模型权重不随安装包分发。缺少权重时服务照常启动，界面会显示 <b>NOT_READY</b>
+      与放置指南，预览区为 <b>DEMO</b> 演示网格，不会执行也不会伪造推理；
+      把 <b>config.yaml</b> 与 <b>model.ckpt</b> 放进模型目录后重启即可。
+    </p>
+  </main>
+
+  <script src="desktop-bridge.js"></script>
+  <script>
+    "use strict";
+    const $ = (id) => document.getElementById(id);
+    const bridge = window.__TRIPOSR_DESKTOP__;
+
+    function render(snap) {
+      if (!snap) return;
+      if (snap.message) $("statusText").textContent = snap.message;
+      if (snap.model_state) {
+        const missing = Array.isArray(snap.missing) && snap.missing.length
+          ? "\n" + snap.missing.join("\n")
+          : "";
+        $("modelText").textContent = "模型状态：" + snap.model_state + missing;
+        $("modelText").hidden = snap.model_state === "READY";
+      }
+      if (snap.error) {
+        $("errorText").textContent = snap.error;
+        $("errorText").hidden = false;
+        $("actions").hidden = false;
+        $("spinner").hidden = true;
+        $("spinner").classList.remove("ok");
+      } else {
+        $("errorText").hidden = true;
+        $("actions").hidden = true;
+        $("spinner").hidden = false;
+      }
+      if (snap.ready) $("spinner").classList.add("ok");
+    }
+
+    async function boot() {
+      if (!bridge || !bridge.isTauri) {
+        $("statusText").textContent = "请通过 TripoSR-Lite 桌面应用启动";
+        $("spinner").hidden = true;
+        return;
+      }
+
+      try {
+        const info = await bridge.invoke("get_app_info");
+        $("version").textContent = "v" + info.version;
+        $("modelDir").textContent = info.model_dir;
+        $("modelDir").title = info.model_dir;
+        $("runtime").textContent = info.external_runtime;
+        $("runtime").title = info.external_runtime;
+        if (info.python_mode === "path") {
+          $("statusText").textContent = "正在启动本地服务（PATH 解释器，仅开发态）…";
+        }
+      } catch (err) {
+        console.warn("get_app_info 失败", err);
+      }
+
+      await bridge.listen("startup-status", (event) => render(event.payload));
+      try {
+        render(await bridge.invoke("get_startup_status"));
+      } catch (err) {
+        console.warn("get_startup_status 失败", err);
+      }
+
+      $("retry").addEventListener("click", async () => {
+        $("retry").disabled = true;
+        try {
+          await bridge.invoke("retry_start");
+        } catch (err) {
+          $("errorText").textContent = "重试失败：" + err;
+          $("errorText").hidden = false;
+        } finally {
+          $("retry").disabled = false;
+        }
+      });
+
+      $("openModel").addEventListener("click", async () => {
+        try {
+          await bridge.invoke("open_model_dir");
+        } catch (err) {
+          $("errorText").textContent = "打开目录失败：" + err;
+          $("errorText").hidden = false;
+        }
+      });
+    }
+
+    boot();
+  </script>
+</body>
+</html>

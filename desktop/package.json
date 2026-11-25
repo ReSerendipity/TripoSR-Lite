@@ -1,0 +1,14 @@
+{
+  "name": "triposr-lite-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TripoSR-Lite 桌面应用壳（Tauri v2）",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "icon": "tauri icon"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.6"
+  }
+}
