@@ -1,6 +1,5 @@
 """HTTP layer: validation errors, NOT_READY flow, exports and static UI."""
 
-import pytest
 
 from helpers import alpha_png_bytes, gif_bytes, png_bytes
 

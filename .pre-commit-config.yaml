@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff check
+        entry: python -m ruff check .
+        language: system
+        pass_filenames: false
+      - id: mypy-cli
+        name: mypy (new CLI package)
+        entry: python -m mypy app/integrated_app --ignore-missing-imports
+        language: system
+        pass_filenames: false
+      - id: pytest
+        name: pytest
+        entry: python -m pytest -q
+        language: system
+        pass_filenames: false

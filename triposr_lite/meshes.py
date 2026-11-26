@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 import numpy as np
 import trimesh
 
-from . import settings
 
 DEMO_LABEL = "DEMO"
 DEMO_NOTE = "程序生成的演示网格，不是 TripoSR 推理结果，也不代表任何真实输入。"

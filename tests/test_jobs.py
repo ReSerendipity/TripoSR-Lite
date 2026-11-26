@@ -2,7 +2,6 @@
 
 import time
 
-import pytest
 
 from triposr_lite.adapter import AdapterError, GenerationCancelled, InferenceResult, ProbeResult, TripoSRAdapter
 from triposr_lite.imaging import ImageInfo

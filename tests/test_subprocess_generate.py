@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import triposr_lite.adapter as adapter_mod
-from triposr_lite.adapter import AdapterError, GenerationCancelled, TripoSRAdapter
+from triposr_lite.adapter import GenerationCancelled, TripoSRAdapter
 from triposr_lite.imaging import ImageInfo
 from triposr_lite.jobs import JobManager, JobStatus
 from triposr_lite.meshes import DEMO_NOTE, MeshRecord, build_demo_mesh

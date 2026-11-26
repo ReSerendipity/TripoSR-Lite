@@ -22,7 +22,7 @@ from .adapter import (
     TripoSRAdapter,
 )
 from .imaging import ImageInfo
-from .meshes import DEMO_LABEL, DEMO_NOTE, MeshRecord, utc_now
+from .meshes import MeshRecord, utc_now
 from .store import MeshStore
 
 STAGE_LABELS: dict[str, tuple[str, float]] = {

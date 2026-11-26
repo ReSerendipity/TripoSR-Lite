@@ -38,6 +38,42 @@ python -m triposr_lite serve --host 127.0.0.1 --port 7861
 python -m triposr_lite probe
 ```
 
+## 命令行（CLI）
+
+安装桌面版后，安装器把 `<安装目录>` 加入当前用户的 PATH，可在任意终端直接调用：
+
+```powershell
+triposr --help
+triposr probe --json
+triposr inspect -i photo.png --json
+triposr generate -i photo.png --no-remote          # 产物落 results/cli/<job_id>/
+triposr jobs list --json
+triposr mesh export <job_id> --format glb -o mesh.glb
+triposr models list --json
+triposr system gpu --json
+triposr serve --port 7861
+```
+
+源码目录可用 `python app/integrated_app/cli.py <子命令>` 或 `python -m triposr_lite <子命令>`，行为一致。
+完整子命令族：`probe / inspect / generate / jobs(list,show,cancel) / mesh(show,export) / export /
+models(list,show) / engines(list) / model(status,verify,dir,download) / download /
+batch(generate,resume) / serve / system(health,gpu,config)`。
+
+**给 AI agent 的契约**：`--json` 可放在 argv 任意位置（含子命令之后），stdout 只有一行
+`{"ok": ..., "command": ..., "data": {...}}` 或 `{"ok": false, "error": ..., "error_code": ...}`；
+所有进度/警告走 stderr。退出码：
+
+| 码 | 含义 | 典型 error_code |
+|---|---|---|
+| 0 | 成功 | — |
+| 1 | 运行时/业务错误 | `BUSINESS_ERROR` / `SUPERVISOR_FAILED` / `EMPTY_MESH` |
+| 2 | 用法错误 | `USAGE_ERROR` / `INVALID_FORMAT` / `JOB_NOT_FOUND` |
+| 3 | 环境未就绪 | `NOT_READY` / `MISSING_*` / `GPU_BUSY` / `INSUFFICIENT_VRAM` |
+
+`GPU_BUSY` / `INSUFFICIENT_VRAM` 会在启动监督脚本**之前**拦截，错误信封带 `hint` 修复指引。
+真实生成要求外部运行时就绪且 GPU 上无其它 compute 进程、空闲显存达到 `TRIPOSR_MIN_FREE_MIB`（默认 7168）。
+方案选型与失败码映射见 `docs/ADR-CLI-AND-UPDATE.md`。
+
 ## 模型下载（本仓库不含权重）
 
 ```powershell

@@ -1,0 +1,19 @@
+# 最小质量门禁：只启用错误类 + 未使用导入（不强制全仓风格整改）。
+target-version = "py312"
+line-length = 100
+exclude = [
+    ".venv",
+    "external",
+    "results",
+    "backups",
+    "desktop/node_modules",
+    "desktop/src-tauri/target",
+]
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = []
+
+[lint.per-file-ignores]
+# 脚本直跑需要在 sys.path 注入之后导入，E402 已用 noqa 标注。
+"app/integrated_app/cli.py" = ["E402"]

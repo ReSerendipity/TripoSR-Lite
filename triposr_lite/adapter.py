@@ -574,6 +574,10 @@ class TripoSRAdapter:
                 bufsize=1,
                 **popen_kw,
             )
+            _write_json(
+                out_dir / "process.json",
+                {"pid": proc.pid, "started_at": datetime.now().isoformat(timespec="seconds")},
+            )
             run_log = out_dir / "run.log"
             reached = 1  # load_model was already reported before the launch
             while True:
