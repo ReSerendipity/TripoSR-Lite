@@ -108,6 +108,12 @@ pip install "transformers==4.36.2" "rembg" "trimesh>=4.5" "scikit-image" "omegac
 
 `torchmcubes` 的 CUDA 扩展在本机**编译失败**：没有 CUDA Toolkit/nvcc，CMake 在 torch 的 `Caffe2Config.cmake` 处报 "installed Caffe2 uses CUDA but I cannot find the CUDA libraries"。因此网格提取改走 CPU：`scripts/_compat/torchmcubes` 通过 `PYTHONPATH` 提供 `torchmcubes.marching_cubes`（scikit-image 实现），**上游 `run.py` 一行未改**；DINOv2、Transformer、triplane 解码与密度/颜色查询仍是真实模型在 GPU 上跑。
 
+CLI 环境的实测口径（2026-11-26）：外部运行时 Python 3.12.10 / torch 2.11.0+cu128 / CUDA 可用 /
+transformers 4.36.2 / trimesh 5.2.2 / numpy 2.1.3，`pip check` 无冲突。上游 4.35.0 与 py3.12
+的不兼容已用 4.36.2 解决，**不需要隔离 venv**。本机无 `nvcc`，`torchmcubes` 只能走 CPU shim；
+它只影响 marching cubes 提取，前向仍是真实 CUDA 模型。`GPU_BUSY` / `INSUFFICIENT_VRAM`
+会在启动监督脚本前被拦截为退出码 3，并给出显存/占用进程的修复指引。
+
 实测命令（官方 `run.py` + 监督脚本记录显存/耗时）：
 
 ```powershell

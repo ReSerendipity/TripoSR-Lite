@@ -167,6 +167,30 @@ def test_serve_rejects_non_loopback() -> None:
     assert exc.value.code == "USAGE_ERROR"
 
 
+@pytest.mark.parametrize(
+    ("code", "hint"),
+    [("GPU_BUSY", "等待占用显卡"), ("INSUFFICIENT_VRAM", "空闲显存")],
+)
+def test_cli_maps_not_ready_codes_with_hint(monkeypatch, capsys, tmp_path: Path, code: str, hint: str) -> None:
+    """S4：GPU 忙 / 显存不足必须在 CLI 层成为退出码 3 + 修复指引，不能被吞掉。"""
+    from app.integrated_app import cli
+    from app.integrated_app.cli_service import CliServiceError
+
+    image = tmp_path / "input.png"
+    Image.new("RGB", (64, 64), (1, 2, 3)).save(image)
+
+    def blocked(*_args, **_kwargs):
+        raise CliServiceError(code, f"{code} 测试", f"{hint} 后重试。")
+
+    monkeypatch.setattr(cli, "generate_image", blocked)
+    exit_code = cli.main(["generate", "-i", str(image), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 3
+    assert payload["ok"] is False
+    assert payload["error_code"] == code
+    assert hint in payload["hint"]
+
+
 @pytest.mark.skipif(
     os.environ.get("TRIPOSR_RUN_REAL") != "1",
     reason="真实推理需外部运行时与权重；手动以 TRIPOSR_RUN_REAL=1 启用",

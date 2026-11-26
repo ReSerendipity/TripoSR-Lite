@@ -96,6 +96,14 @@ S3 其余实现：新增端口文件（写侧在 `desktop_launch.py`，读侧在
 
 优先级：先查分派/注册、再做「加载前 0 秒校验」（缺权重 / 显存不足 / GPU 忙必须在起子进程前给出语义错误），然后核实 torchmcubes CPU shim 与 transformers 版本；主环境锁不动。质量类问题先人眼/下游可用性定性，数值指标只做回归断言。
 
+**本阶段复核结论（2026-11-26，命令实测）**：
+
+1. 分派表：不适用。本仓只有单一 `triposr` 引擎，`registry.MODEL_CARD` / `TripoSRAdapter` / `engines list` 三处一致，没有「注册了却调不通」的多引擎分派问题。
+2. 零校验静默失败：已在 `cli_service._ready_or_raise()` 做 0 秒拦截，缺权重 / `GPU_BUSY` / `INSUFFICIENT_VRAM` 映射为退出码 3 并附 `hint`；`EMPTY_MESH` / `SUPERVISOR_FAILED` 映射为 1。测试逐码钉住，不会吞错。
+3. `transformers`：**外部运行时实测 4.36.2**（Python 3.12.10、torch 2.11.0+cu128、trimesh 5.2.2、numpy 2.1.3），`pip check` = `No broken requirements found`。上游钉版 4.35.0 与 py3.12 的冲突已在既有 README 中以 4.36.2 解决，主环境锁与外部运行时均未改动，**无需引入隔离 venv + 子进程委托**（本仓不存在 TTS 那种「5.x 兼容层产出废结果」的证据）。
+4. `torchmcubes`：外部运行时里未安装该模块；只有注入 `PYTHONPATH=scripts/_compat` 后才是 CPU shim（`0.1.0+cpu-shim`）。本机 `nvcc` 不存在，无法编译 CUDA 扩展，也没有匹配 torch 2.11+cu128 的预编译 wheel 证据，因此**不安装、不动锁**。shim 只替换 `marching_cubes`（scikit-image lewiner，CUDA 体积拷回主机），DINOv2 / Transformer / triplane 前向仍是真实 CUDA 模型。
+5. 下游可用性：CLI 从 2026-11-25 真实生成的 `mesh.glb` 读回，stats = 42,076 顶点 / 84,156 面 / watertight=true / vertex colors；导出 OBJ 6.8 MB，头为 `# source: model`、对象名 `TRIPOSR_MESH`，`DEMO` 出现 0 次。`mesh_stats.volume` 为负值（-0.0645），可能是面朝向约定或 shim 轴序的表现，**本轮不改网格逻辑**，作为需要人眼/下游可视化确认的观察项记录。
+
 ### U · 更新路线
 
 复核后确认是「零路线」而非「两条路线」。目标仍是**单一完整包路线**：官网与客户端检查更新给同一个 `TripoSR-Lite-Setup-v<version>.exe` + 同名 `.sha256`；本仓完整负载是 Setup + 7z 分卷组合，前端必须提示分卷与 Setup 同目录（不引入差分/增量双路线）。自更新七步中第 7 步由自写 NSIS 的 `/RELAUNCH` 参数完成。Release 资产默认不动。
