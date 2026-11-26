@@ -85,6 +85,7 @@ Write-Step '[归档] git archive HEAD（只含跟踪代码）'
 $tarPath = Join-Path $env:TEMP ("triposr-stage-{0}.tar" -f [guid]::NewGuid().ToString('N'))
 $archivePaths = @(
     'triposr_lite',
+    'app',
     'scripts',
     'docs',
     'README.md',
@@ -106,6 +107,8 @@ $launch = Join-Path $appDir 'scripts\desktop_launch.py'
 if (-not (Test-Path -LiteralPath $launch)) { throw 'staging 缺少 scripts/desktop_launch.py' }
 $compat = Join-Path $appDir 'scripts\_compat\torchmcubes\__init__.py'
 if (-not (Test-Path -LiteralPath $compat)) { throw 'staging 缺少 scripts/_compat/torchmcubes' }
+$cliEntry = Join-Path $appDir 'app\integrated_app\cli.py'
+if (-not (Test-Path -LiteralPath $cliEntry)) { throw 'staging 缺少 app/integrated_app/cli.py（triposr.cmd 入口）' }
 
 $stagedSettings = Get-Content -LiteralPath (Join-Path $appDir 'triposr_lite\settings.py') -Raw -Encoding UTF8
 $match = [regex]::Match($stagedSettings, '(?m)^VERSION\s*=\s*"([^"]+)"')

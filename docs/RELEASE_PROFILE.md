@@ -45,6 +45,7 @@
 ├─ TripoSR-Lite.exe               # cargo build --release 产物（壳，不入数据卷）
 └─ app/                           # 应用根（数据卷内容，staging 根 = 安装根）
    ├─ scripts/desktop_launch.py  run_triposr_real.py  _compat/
+   ├─ app/integrated_app/         # 产品 CLI（triposr.cmd → cli.py）
    ├─ triposr_lite/              # 代码 + web 静态页
    ├─ external/TripoSR/          # 上游代码 run.py tsr/ LICENSE ...
    │  └─ runtime/                # 外部推理运行时（第二套 CPython）
