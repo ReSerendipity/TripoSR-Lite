@@ -37,6 +37,12 @@ from app.integrated_app.cli_output import (  # noqa: E402
     emit_warning,
     end_json_mode,
 )
+from app.integrated_app.cli_remote import (  # noqa: E402
+    RemoteError,
+    discover_server,
+    generate as remote_generate,
+    inspect as remote_inspect,
+)
 from app.integrated_app.cli_service import (  # noqa: E402
     CliServiceError,
     batch_generate,
@@ -65,6 +71,8 @@ from app.integrated_app.cli_service import (  # noqa: E402
 
 def _add_common_io(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-i", "--input", required=True, help="输入 PNG/JPEG 图片路径")
+    parser.add_argument("--server", default=None, help="复用常驻服务 URL（默认自动发现）")
+    parser.add_argument("--no-remote", action="store_true", help="强制直调，不走 HTTP 服务")
 
 
 def _add_generate_args(parser: argparse.ArgumentParser) -> None:
@@ -75,8 +83,6 @@ def _add_generate_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--no-remove-bg", action="store_true", help="跳过 rembg 抠图")
     parser.add_argument("--foreground-ratio", type=float, default=0.85)
     parser.add_argument("--timeout", type=int, default=None, help="单任务硬超时秒数")
-    parser.add_argument("--server", default=None, help="复用常驻服务 URL（S3）")
-    parser.add_argument("--no-remote", action="store_true", help="强制直调，不走 HTTP 服务（S3）")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -147,6 +153,8 @@ def build_parser() -> argparse.ArgumentParser:
     bg.add_argument("--mc-resolution", type=int, default=256)
     bg.add_argument("--chunk-size", type=int, default=8192)
     bg.add_argument("--timeout", type=int, default=None)
+    bg.add_argument("--server", default=None, help="复用常驻服务 URL（默认自动发现）")
+    bg.add_argument("--no-remote", action="store_true", help="强制直调")
     br = batch_sub.add_parser("resume", help="重试批次中的失败项")
     br.add_argument("batch_id")
     br.add_argument("--timeout", type=int, default=None)
@@ -197,6 +205,13 @@ def _failure(exc: Exception, command: str) -> Result:
     return Result.failure(f"{type(exc).__name__}: {exc}", "BUSINESS_ERROR", command=command)
 
 
+def _remote_base(args: argparse.Namespace) -> str | None:
+    """远程开关：--no-remote 强制直调；否则按显式 URL > 环境变量 > 端口文件发现。"""
+    if getattr(args, "no_remote", False):
+        return None
+    return discover_server(getattr(args, "server", None))
+
+
 def _dispatch(args: argparse.Namespace, as_json: bool, command: str) -> int:
     action = getattr(args, "action", "")
 
@@ -206,18 +221,45 @@ def _dispatch(args: argparse.Namespace, as_json: bool, command: str) -> int:
     if command == "probe":
         return emit(_ok(probe_payload(), command), as_json, _human)
     if command == "inspect":
-        return emit(_ok(inspect_image(args.input, with_mask=args.with_mask), command), as_json, _human)
+        data = None
+        base = _remote_base(args)
+        if base:
+            try:
+                data = remote_inspect(base, args.input, with_mask=args.with_mask)
+            except RemoteError as exc:
+                emit_warning(f"远程 inspect 失败，回落直调：{exc}")
+        if data is None:
+            data = inspect_image(args.input, with_mask=args.with_mask)
+        return emit(_ok(data, command), as_json, _human)
     if command == "generate":
-        data = generate_image(
-            args.input,
-            output_dir=args.output_dir,
-            mc_resolution=args.mc_resolution,
-            chunk_size=args.chunk_size,
-            remove_background=not args.no_remove_bg,
-            foreground_ratio=args.foreground_ratio,
-            timeout_s=args.timeout,
-            progress_cb=progress,
-        )
+        base = _remote_base(args)
+        data = None
+        if base:
+            try:
+                data = remote_generate(
+                    base,
+                    args.input,
+                    output_dir=args.output_dir,
+                    mc_resolution=args.mc_resolution,
+                    chunk_size=args.chunk_size,
+                    remove_background=not args.no_remove_bg,
+                    foreground_ratio=args.foreground_ratio,
+                    timeout_s=args.timeout,
+                    progress_cb=progress,
+                )
+            except RemoteError as exc:
+                emit_warning(f"远程 generate 失败，回落直调：{exc}")
+        if data is None:
+            data = generate_image(
+                args.input,
+                output_dir=args.output_dir,
+                mc_resolution=args.mc_resolution,
+                chunk_size=args.chunk_size,
+                remove_background=not args.no_remove_bg,
+                foreground_ratio=args.foreground_ratio,
+                timeout_s=args.timeout,
+                progress_cb=progress,
+            )
         return emit(_ok(data, command), as_json, _human)
     if command == "jobs" and action == "list":
         return emit(_ok(jobs_list(limit=args.limit), command), as_json, _human)
@@ -245,14 +287,32 @@ def _dispatch(args: argparse.Namespace, as_json: bool, command: str) -> int:
     if (command == "model" and action == "download") or command == "download":
         return emit(_ok(model_download(execute=args.execute), command), as_json, _human)
     if command == "batch" and action == "generate":
-        data = batch_generate(
-            args.input,
-            output_dir=args.output_dir,
-            mc_resolution=args.mc_resolution,
-            chunk_size=args.chunk_size,
-            timeout_s=args.timeout,
-            progress_cb=progress,
-        )
+        base = _remote_base(args)
+
+        def one(path: str) -> dict:
+            if base:
+                try:
+                    return remote_generate(
+                        base,
+                        path,
+                        output_dir=args.output_dir,
+                        mc_resolution=args.mc_resolution,
+                        chunk_size=args.chunk_size,
+                        timeout_s=args.timeout,
+                        progress_cb=progress,
+                    )
+                except RemoteError as exc:
+                    emit_warning(f"远程 batch 失败，回落直调：{exc}")
+            return generate_image(
+                path,
+                output_dir=args.output_dir,
+                mc_resolution=args.mc_resolution,
+                chunk_size=args.chunk_size,
+                timeout_s=args.timeout,
+                progress_cb=progress,
+            )
+
+        data = batch_generate(args.input, generator=one, progress_cb=progress)
         return emit(_ok(data, command), as_json, _human)
     if command == "batch" and action == "resume":
         return emit(_ok(batch_resume(args.batch_id, timeout_s=args.timeout), command), as_json, _human)

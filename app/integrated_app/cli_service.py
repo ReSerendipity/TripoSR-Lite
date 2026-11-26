@@ -525,6 +525,7 @@ def batch_generate(
     chunk_size: int = 8192,
     timeout_s: int | None = None,
     progress_cb: ProgressCb | None = None,
+    generator: Callable[[str], dict] | None = None,
 ) -> dict:
     if not paths:
         raise CliServiceError("USAGE_ERROR", "batch generate 至少需要一个输入文件。")
@@ -535,13 +536,17 @@ def batch_generate(
         if progress_cb:
             progress_cb("batch", index / len(paths))
         try:
-            data = generate_image(
-                path,
-                output_dir=output_dir,
-                mc_resolution=mc_resolution,
-                chunk_size=chunk_size,
-                timeout_s=timeout_s,
-                progress_cb=progress_cb,
+            data = (
+                generator(path)
+                if generator is not None
+                else generate_image(
+                    path,
+                    output_dir=output_dir,
+                    mc_resolution=mc_resolution,
+                    chunk_size=chunk_size,
+                    timeout_s=timeout_s,
+                    progress_cb=progress_cb,
+                )
             )
             results.append({"input": path, "job_id": data["job_id"], "glb": data["glb"]})
         except CliServiceError as exc:

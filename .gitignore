@@ -1,4 +1,5 @@
 # Local-only workspace artefacts
+.server_port
 backups/
 .venv/
 venv/

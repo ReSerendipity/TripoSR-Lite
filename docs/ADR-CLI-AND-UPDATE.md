@@ -88,7 +88,9 @@ TripoSR-Lite 目前是「能跑的 Web 服务 + Tauri 桌面壳」。已有 `pyt
 
 因此选择 **方案 B**：CLI 的 HTTP 复用**只省 FastAPI 启动与进程初始化，不省 1.68GB 权重加载**。文档与 KPI 实测如实说明，绝不宣称「几十秒降到个位数秒」。若后续要上方案 A，应另立 ADR 并先做常驻 worker 的独立验收。
 
-S3 其余实现：新增端口文件（写侧在 `desktop_launch.py`，读侧在 `cli_remote.py`），服务发现优先级 `--server` > `TRIPOSR_CLI_SERVER` > 端口文件；2s 探测；`inspect`/`generate`/`batch` 可走 HTTP，`--no-remote` 强制直调；任何异常回落直调；大网格走流式下载。
+S3 其余实现：新增端口文件（写侧在 `desktop_launch.py`，读侧在 `cli_remote.py`；路径 `TRIPOSR_PORT_FILE` > 安装态 `%LOCALAPPDATA%\TripoSR-Lite\.server_port` > 源码态 `app/.server_port`，均不入库），服务发现优先级 `--server` > `TRIPOSR_CLI_SERVER` > 端口文件；2s 探测；`inspect`/`generate`/`batch` 可走 HTTP，`--no-remote` 强制直调；六种降级路径（服务不可达 / 版本不符 / 端点契约不符 / 任务终态非 DONE / 轮询或下载超时 / 产物为空）全部回落直调；大网格走流式下载。
+
+**KPI 实测（2026-11-26，测试监督脚本，GPU 上有 ComfyUI 占用导致绝对数字波动）**：HTTP 自动发现（端口文件）第一次 23.11s（服务侧冷探测）、第二次 **2.61s**；直调两次 8.89s / 26.99s。四次生成留下 4 个 `app-*` 证据目录，4 份 `run.log` 都出现 `Initializing model ...` 阶段标记 —— 证明 HTTP 只复用服务进程与探测缓存，**没有**复用模型加载，方案 B 的收益边界与声明一致。真实模型路径当天因 GPU 被其它 compute 进程占用（`GPU_BUSY`，空闲 3764 MiB < 7168 MiB 闸门）返回退出码 3，未产生真实生成数据，不伪造 KPI。
 
 ### S4 · 引擎阻塞
 

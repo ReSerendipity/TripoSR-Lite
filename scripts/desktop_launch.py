@@ -67,6 +67,14 @@ def main(argv: list[str] | None = None) -> int:
 
     # 先打印端口锚点：即使后续导入/加载失败，壳也能在日志里定位本次端口。
     print(f"监听端口: {args.port}", flush=True)
+    # 端口文件：CLI 服务发现的最后一级；写入失败不阻断服务启动。
+    clear_port_file = None
+    try:
+        from triposr_lite.server_port import clear_port_file, write_port_file
+
+        write_port_file(args.port)
+    except Exception as exc:  # noqa: BLE001 - 端口文件可选
+        print(f"[TripoSR-Lite] 端口文件写入失败（CLI 会降级直调）：{exc}", file=sys.stderr, flush=True)
     print(f"[TripoSR-Lite] 应用目录：{app_root}", flush=True)
     print(
         "[TripoSR-Lite] 模型目录："
@@ -94,7 +102,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[TripoSR-Lite] 启动失败：导入依赖异常（{exc}）", file=sys.stderr, flush=True)
         return 2
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    try:
+        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    finally:
+        if clear_port_file is not None:
+            clear_port_file()
     return 0
 
 

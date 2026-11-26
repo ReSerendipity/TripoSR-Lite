@@ -74,6 +74,13 @@ batch(generate,resume) / serve / system(health,gpu,config)`。
 真实生成要求外部运行时就绪且 GPU 上无其它 compute 进程、空闲显存达到 `TRIPOSR_MIN_FREE_MIB`（默认 7168）。
 方案选型与失败码映射见 `docs/ADR-CLI-AND-UPDATE.md`。
 
+**复用常驻服务**：桌面壳启动时会把动态端口写入端口文件（`TRIPOSR_PORT_FILE` > 安装态
+`%LOCALAPPDATA%\TripoSR-Lite\.server_port` > 源码态 `app/.server_port`）。`inspect` /
+`generate` / `batch generate` 默认按 `--server` > `TRIPOSR_CLI_SERVER` > 端口文件的顺序发现
+Service；探测 2 秒超时，任何失败（服务不可达、契约不符、任务失败、超时、下载失败等）
+自动回落直调，`--no-remote` 可强制直调。注意当前模型仍由监督脚本每任务加载，HTTP
+只省服务启动与探测缓存，**不省 1.68GB 权重加载**；实测数据与理由见 ADR。
+
 ## 模型下载（本仓库不含权重）
 
 ```powershell
