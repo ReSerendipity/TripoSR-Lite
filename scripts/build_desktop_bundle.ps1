@@ -57,20 +57,35 @@ function Convert-ToBytes([string]$Text) {
     }
     return [long]$Text
 }
+# Windows PowerShell 5.1 在 $ErrorActionPreference='Stop' 下会把原生命令的 stderr
+# 变成 NativeCommandError 终止脚本（cargo/torch 的告警都会命中）。统一在局部
+# 降为 Continue 捕获，仍按退出码判定失败，输出转字符串避免 ErrorRecord 外溢。
+function Invoke-NativeCapture {
+    param([string]$Exe, [string[]]$Arguments)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = @(& $Exe @Arguments 2>&1 | ForEach-Object { [string]$_ })
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+    $code = $LASTEXITCODE
+    return [pscustomobject]@{ Code = $code; Output = $output }
+}
 function Remove-TreeFast([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return }
     $full = (Resolve-Path -LiteralPath $Path).Path
     if ($full.Length -lt 12) { throw "拒绝删除可疑路径：$full" }
-    & cmd /c "rmdir /s /q `"$full`"" 2>$null | Out-Null
+    $null = Invoke-NativeCapture 'cmd' @('/c', "rmdir /s /q `"$full`"")
 }
 function Copy-TreeBulk([string]$Source, [string]$Dest, [string[]]$ExcludeDirs = @(), [string[]]$ExcludeFiles = @()) {
     if (-not (Test-Path -LiteralPath $Source)) { throw "源不存在：$Source" }
     New-Item -ItemType Directory -Path $Dest -Force | Out-Null
-    $args = @($Source, $Dest, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1')
-    if ($ExcludeDirs.Count -gt 0) { $args += '/XD'; $args += $ExcludeDirs }
-    if ($ExcludeFiles.Count -gt 0) { $args += '/XF'; $args += $ExcludeFiles }
-    $out = & robocopy @args 2>&1
-    if ($LASTEXITCODE -ge 8) { throw "robocopy 失败（$LASTEXITCODE）：$($out | Select-Object -Last 5)" }
+    $rcArgs = @($Source, $Dest, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1')
+    if ($ExcludeDirs.Count -gt 0) { $rcArgs += '/XD'; $rcArgs += $ExcludeDirs }
+    if ($ExcludeFiles.Count -gt 0) { $rcArgs += '/XF'; $rcArgs += $ExcludeFiles }
+    $r = Invoke-NativeCapture 'robocopy' $rcArgs
+    if ($r.Code -ge 8) { throw "robocopy 失败（$($r.Code)）：$($r.Output | Select-Object -Last 5)" }
 }
 function Get-TreeStats([string]$Path) {
     $files = @(Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue)
@@ -80,10 +95,9 @@ function Get-TreeStats([string]$Path) {
 }
 function Invoke-Logged([string]$Name, [string]$LogDir, [string]$Exe, [string[]]$Arguments) {
     $log = Join-Path $LogDir "$Name.log"
-    $output = & $Exe @Arguments 2>&1
-    $code = $LASTEXITCODE
-    $output | Tee-Object -FilePath $log | Out-Null
-    return [pscustomobject]@{ Code = $code; Output = @($output) }
+    $r = Invoke-NativeCapture $Exe $Arguments
+    $r.Output | Tee-Object -FilePath $log | Out-Null
+    return $r
 }
 function Find-Standalone7za([string]$Explicit) {
     $candidates = @(
@@ -203,20 +217,20 @@ if ($ReuseRuntime -and (Test-Path -LiteralPath (Join-Path $appRuntimeDir 'python
 }
 $appRuntimePython = Join-Path $appRuntimeDir 'python.exe'
 $extRuntimePython = Join-Path $extRuntimeDir 'python.exe'
-$probeApp = & $appRuntimePython -B -c "import sys, fastapi, uvicorn, trimesh, PIL, numpy, multipart; print('app_runtime_ok', sys.version.split()[0])" 2>&1
-if ($LASTEXITCODE -ne 0) { throw ("应用 runtime 冒烟失败：" + ($probeApp -join "`n")) }
-Write-Host "    · $probeApp"
+$probeApp = Invoke-NativeCapture $appRuntimePython @('-B', '-c', "import sys, fastapi, uvicorn, trimesh, PIL, numpy, multipart; print('app_runtime_ok', sys.version.split()[0])")
+if ($probeApp.Code -ne 0) { throw ("应用 runtime 冒烟失败：" + (($probeApp.Output) -join "`n")) }
+Write-Host ("    · " + (($probeApp.Output) -join ' '))
 $compatDir = Join-Path $Root 'scripts\_compat'
 $env:PYTHONPATH = $compatDir
 Push-Location (Join-Path $Root 'external\TripoSR')
 try {
-    $probeExt = & $extRuntimePython -B -c "import sys, torch, tsr.system; print('ext_runtime_ok', sys.version.split()[0], torch.__version__, torch.cuda.is_available())" 2>&1
+    $probeExt = Invoke-NativeCapture $extRuntimePython @('-B', '-c', "import sys, torch, tsr.system; print('ext_runtime_ok', sys.version.split()[0], torch.__version__, torch.cuda.is_available())")
 } finally {
     Pop-Location
     Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
 }
-if ($LASTEXITCODE -ne 0) { throw ("外部 runtime 冒烟失败：" + ($probeExt -join "`n")) }
-Write-Host "    · $probeExt"
+if ($probeExt.Code -ne 0) { throw ("外部 runtime 冒烟失败：" + (($probeExt.Output) -join "`n")) }
+Write-Host ("    · " + (($probeExt.Output) -join ' '))
 $rtStats = Get-TreeStats $runtimeRoot
 Write-Host ("    · runtime 合计 {0} 文件 / {1}" -f $rtStats.Files, (Format-Size $rtStats.Bytes))
 
@@ -329,12 +343,12 @@ if ($SkipSmoke) {
     Write-Host "    · python 日志：$($pythonLog.FullName)"
 
     # 温和关闭：taskkill 不带 /F 发 WM_CLOSE，让壳走 RunEvent::Exit 自清理
-    & taskkill /PID $process.Id 2>$null | Out-Null
+    $null = Invoke-NativeCapture 'taskkill' @('/PID', [string]$process.Id)
     $graceDeadline = (Get-Date).AddSeconds(25)
     while (-not $process.HasExited -and (Get-Date) -lt $graceDeadline) { Start-Sleep -Milliseconds 500 }
     if (-not $process.HasExited) {
         Write-Warning '壳未在 25s 内退出，强制杀进程树'
-        & taskkill /PID $process.Id /T /F 2>$null | Out-Null
+        $null = Invoke-NativeCapture 'taskkill' @('/PID', [string]$process.Id, '/T', '/F')
     }
     Start-Sleep -Seconds 1
 
@@ -374,23 +388,24 @@ $stale = @(Get-ChildItem -LiteralPath $distDir -Filter 'TripoSR-Lite-Data.7z.*' 
 foreach ($f in $stale) { Remove-Item -LiteralPath $f.FullName -Force }
 Push-Location $stagingDir
 try {
-    $out = & $sevenZip a -t7z "-mx=$Level" "-v${maxBytes}b" $archiveBase 'app' -bso0 -bsp0 2>&1
-    if ($LASTEXITCODE -ne 0) { throw ("7z 打包失败（$LASTEXITCODE）：" + ($out -join "`n")) }
+    $r = Invoke-NativeCapture $sevenZip @('a', '-t7z', "-mx=$Level", "-v${maxBytes}b", $archiveBase, 'app', '-bso0', '-bsp0')
+    if ($r.Code -ne 0) { throw ("7z 打包失败（$($r.Code)）：" + (($r.Output) -join "`n")) }
 } finally {
     Pop-Location
 }
 $volumes = @(Get-ChildItem -LiteralPath $distDir -Filter 'TripoSR-Lite-Data.7z.*' -File | Sort-Object Name)
 if ($volumes.Count -eq 0) { throw '未生成任何数据分卷' }
 $firstVolume = $volumes[0].FullName
-$out = & $sevenZip t $firstVolume -bso0 -bsp0 2>&1
-if ($LASTEXITCODE -ne 0) { throw ("7z t 回读失败（$LASTEXITCODE）：" + ($out -join "`n")) }
+$r = Invoke-NativeCapture $sevenZip @('t', $firstVolume, '-bso0', '-bsp0')
+if ($r.Code -ne 0) { throw ("7z t 回读失败（$($r.Code)）：" + (($r.Output) -join "`n")) }
 foreach ($v in $volumes) {
     if ($v.Length -gt 1900MB) { throw "分卷 $($v.Name) 超过 1900MB" }
     Write-Host ("    · {0} {1}" -f $v.Name, (Format-Size $v.Length))
 }
 Write-Host '    · 7z t 回读通过'
-$archiveList = & $sevenZip l $firstVolume -bso0 -bsp0 2>&1
-if ($LASTEXITCODE -ne 0) { throw "7z l 失败（$LASTEXITCODE）" }
+$r = Invoke-NativeCapture $sevenZip @('l', $firstVolume, '-bso0', '-bsp0')
+if ($r.Code -ne 0) { throw "7z l 失败（$($r.Code)）" }
+$archiveList = $r.Output
 $badHits = @($archiveList | Select-String -Pattern '__pycache__|\.pyc|\.ckpt|\.safetensors')
 if ($badHits.Count -gt 0) { throw "数据卷含缓存/权重条目 $($badHits.Count) 项，拒绝出包" }
 Write-Host '    · 数据卷无 __pycache__/*.pyc/*.ckpt/*.safetensors'
@@ -412,19 +427,20 @@ if ($SkipInstaller) {
     if (-not (Test-Path -LiteralPath $nsi)) { throw "缺少 $nsi" }
 
     $estKb = [long]($appStats.Bytes / 1024)
-    $out = & $makensis `
-        "/DAPP_VERSION=$Version" `
-        "/DSRC_DIR=$stagingDir" `
-        "/DOUT_DIR=$distDir" `
-        "/DSRC_DATA=$firstVolume" `
-        "/DSRC_SHELL=$stagedShell" `
-        "/DSRC_7ZA=$sevenZipStandalone" `
-        "/DAPP_ICON=$icon" `
-        "/DDATA_VOLUMES=$($volumes.Count)" `
-        "/DEST_KB=$estKb" `
-        $nsi 2>&1
-    $out | Tee-Object -FilePath (Join-Path $logDir 'makensis.log') | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw ("makensis 失败（$LASTEXITCODE），日志：$logDir\makensis.log`n" + (($out | Select-Object -Last 20) -join "`n")) }
+    $r = Invoke-NativeCapture $makensis @(
+        "/DAPP_VERSION=$Version",
+        "/DSRC_DIR=$stagingDir",
+        "/DOUT_DIR=$distDir",
+        "/DSRC_DATA=$firstVolume",
+        "/DSRC_SHELL=$stagedShell",
+        "/DSRC_7ZA=$sevenZipStandalone",
+        "/DAPP_ICON=$icon",
+        "/DDATA_VOLUMES=$($volumes.Count)",
+        "/DEST_KB=$estKb",
+        $nsi
+    )
+    $r.Output | Tee-Object -FilePath (Join-Path $logDir 'makensis.log') | Out-Null
+    if ($r.Code -ne 0) { throw ("makensis 失败（$($r.Code)），日志：$logDir\makensis.log`n" + (($r.Output | Select-Object -Last 20) -join "`n")) }
     if (-not (Test-Path -LiteralPath $setupExe)) { throw "未生成安装器：$setupExe" }
     $setupVersion = Get-ShellVersion $setupExe
     if ($setupVersion -ne $Version) { throw "安装器 ProductVersion=$setupVersion != $Version" }
@@ -455,8 +471,8 @@ $shaTool = 'C:\Program Files\Git\usr\bin\sha256sum.exe'
 if (Test-Path -LiteralPath $shaTool) {
     Push-Location $distDir
     try {
-        $check = & $shaTool -c SHA256SUMS 2>&1
-        if ($LASTEXITCODE -ne 0) { throw ("sha256sum -c 失败：" + ($check -join "`n")) }
+        $r = Invoke-NativeCapture $shaTool @('-c', 'SHA256SUMS')
+        if ($r.Code -ne 0) { throw ("sha256sum -c 失败：" + (($r.Output) -join "`n")) }
         Write-Host '    · Git Bash sha256sum -c 校验通过'
     } finally { Pop-Location }
 } else {
@@ -557,16 +573,16 @@ if ($SkipInstaller -or $SkipInstallTest) {
             '--virtual-time-budget=12000',
             "http://127.0.0.1:$port/"
         )
-        & $edge @edgeArgs 2>&1 | Out-Null
+        $null = Invoke-NativeCapture $edge $edgeArgs
         if (Test-Path -LiteralPath $shot) { Write-Host "    · UI 截图：$shot" } else { Write-Warning 'headless Edge 截图未生成' }
     }
 
-    & taskkill /PID $appProc.Id 2>$null | Out-Null
+    $null = Invoke-NativeCapture 'taskkill' @('/PID', [string]$appProc.Id)
     $graceDeadline = (Get-Date).AddSeconds(25)
     while (-not $appProc.HasExited -and (Get-Date) -lt $graceDeadline) { Start-Sleep -Milliseconds 500 }
     if (-not $appProc.HasExited) {
         Write-Warning '安装版壳未在 25s 内退出，强制杀进程树'
-        & taskkill /PID $appProc.Id /T /F 2>$null | Out-Null
+        $null = Invoke-NativeCapture 'taskkill' @('/PID', [string]$appProc.Id, '/T', '/F')
     }
     Start-Sleep -Seconds 1
     $orphans = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |

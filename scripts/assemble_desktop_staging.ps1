@@ -38,20 +38,35 @@ function Format-Size([long]$Bytes) {
     if ($Bytes -ge 1MB) { return ('{0:N1} MB' -f ($Bytes / 1MB)) }
     return ('{0:N0} KB' -f ($Bytes / 1KB))
 }
+# Windows PowerShell 5.1 在 $ErrorActionPreference='Stop' 下会把原生命令的 stderr
+# 变成 NativeCommandError（torch 导入告警即命中）。局部降为 Continue 捕获，
+# 仍按退出码判定失败。
+function Invoke-NativeCapture {
+    param([string]$Exe, [string[]]$Arguments)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = @(& $Exe @Arguments 2>&1 | ForEach-Object { [string]$_ })
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+    $code = $LASTEXITCODE
+    return [pscustomobject]@{ Code = $code; Output = $output }
+}
 function Remove-TreeFast([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return }
     $full = (Resolve-Path -LiteralPath $Path).Path
     if ($full.Length -lt 12) { throw "拒绝删除可疑路径：$full" }
-    & cmd /c "rmdir /s /q `"$full`"" 2>$null | Out-Null
+    $null = Invoke-NativeCapture 'cmd' @('/c', "rmdir /s /q `"$full`"")
 }
 function Copy-TreeBulk([string]$Source, [string]$Dest, [string[]]$ExcludeDirs = @(), [string[]]$ExcludeFiles = @()) {
     if (-not (Test-Path -LiteralPath $Source)) { throw "源不存在：$Source" }
     New-Item -ItemType Directory -Path $Dest -Force | Out-Null
-    $args = @($Source, $Dest, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1')
-    if ($ExcludeDirs.Count -gt 0) { $args += '/XD'; $args += $ExcludeDirs }
-    if ($ExcludeFiles.Count -gt 0) { $args += '/XF'; $args += $ExcludeFiles }
-    $out = & robocopy @args 2>&1
-    if ($LASTEXITCODE -ge 8) { throw "robocopy 失败（$LASTEXITCODE）：$($out | Select-Object -Last 5)" }
+    $rcArgs = @($Source, $Dest, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1')
+    if ($ExcludeDirs.Count -gt 0) { $rcArgs += '/XD'; $rcArgs += $ExcludeDirs }
+    if ($ExcludeFiles.Count -gt 0) { $rcArgs += '/XF'; $rcArgs += $ExcludeFiles }
+    $r = Invoke-NativeCapture 'robocopy' $rcArgs
+    if ($r.Code -ge 8) { throw "robocopy 失败（$($r.Code)）：$($r.Output | Select-Object -Last 5)" }
 }
 function Get-TreeStats([string]$Path) {
     $files = @(Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue)
@@ -147,12 +162,12 @@ if ($SkipRuntime) {
     }
     $appPy = Join-Path $appDir 'runtime\python.exe'
     $extPy = Join-Path $externalDst 'runtime\python.exe'
-    $probeApp = & $appPy -B -c "import sys, fastapi, uvicorn, trimesh, PIL, numpy, multipart; print('app_runtime_ok', sys.version.split()[0])" 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "应用 runtime 冒烟失败：$probeApp" }
-    Write-Host "    · $probeApp"
-    $probeExt = & $extPy -B -c "import sys, torch; print('ext_runtime_ok', sys.version.split()[0], torch.__version__, torch.cuda.is_available())" 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "外部 runtime 冒烟失败：$probeExt" }
-    Write-Host "    · $probeExt"
+    $probeApp = Invoke-NativeCapture $appPy @('-B', '-c', 'import sys, fastapi, uvicorn, trimesh, PIL, numpy, multipart; print(''app_runtime_ok'', sys.version.split()[0])')
+    if ($probeApp.Code -ne 0) { throw ("应用 runtime 冒烟失败：" + (($probeApp.Output) -join "`n")) }
+    Write-Host ("    · " + (($probeApp.Output) -join ' '))
+    $probeExt = Invoke-NativeCapture $extPy @('-B', '-c', 'import sys, torch; print(''ext_runtime_ok'', sys.version.split()[0], torch.__version__, torch.cuda.is_available())')
+    if ($probeExt.Code -ne 0) { throw ("外部 runtime 冒烟失败：" + (($probeExt.Output) -join "`n")) }
+    Write-Host ("    · " + (($probeExt.Output) -join ' '))
 }
 
 # ------------------------------------------------- 模型目录（空目录 + 指南） ----
