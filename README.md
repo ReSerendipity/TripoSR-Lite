@@ -81,6 +81,17 @@ Service；探测 2 秒超时，任何失败（服务不可达、契约不符、�
 自动回落直调，`--no-remote` 可强制直调。注意当前模型仍由监督脚本每任务加载，HTTP
 只省服务启动与探测缓存，**不省 1.68GB 权重加载**；实测数据与理由见 ADR。
 
+## 更新
+
+桌面壳加载页提供「检查更新」。它与官网下载走**同一套完整包资产**：
+`TripoSR-Lite-Setup-v<version>.exe` + 同目录的 `TripoSR-Lite-Data.7z.001..NNN` + `SHA256SUMS`。
+点击一次检查，确认后再次点击授权下载；校验 SHA256 后应用有序退出，安装器以 `/S /RELAUNCH`
+静默安装并在结束时自动把应用拉起。没有差分/增量第二条产线。Release 资产默认不动。
+
+无 GitHub remote 的本机 checkout 上，更新源默认 `ReSerendipity/TripoSR-Lite`；
+可用 `TRIPOSR_UPDATE_REPO=owner/repo` 覆盖。端到端验收 workflow 为
+`.github/workflows/verify-relaunch.yml`（手动触发，输入 tag）。
+
 ## 模型下载（本仓库不含权重）
 
 ```powershell

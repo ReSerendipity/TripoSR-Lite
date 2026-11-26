@@ -258,6 +258,15 @@ Section "${APP_DISPLAY_NAME}" SEC_APP
   WriteRegDWORD HKCU "${UNINST_KEY}" "EstimatedSize" ${EST_KB}
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
+
+  ; ---------- 自更新第 7 步 ----------
+  ; 应用内更新器下载完整包后以 `/S /RELAUNCH` 启动本安装器；
+  ; 应用已在安装前有序退出，装完必须由安装器把主程序拉起。
+  ${StrStr} $0 "$CMDLINE" "/RELAUNCH"
+  ${If} $0 != ""
+    DetailPrint "更新安装完成，正在重新启动 ${APP_NAME}…"
+    Exec '"$INSTDIR\${APP_EXE}"'
+  ${EndIf}
   RMDir /r "$TOOLSDIR"
 SectionEnd
 

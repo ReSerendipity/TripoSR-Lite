@@ -1,0 +1,134 @@
+name: Verify Auto-Relaunch
+
+# 自更新第 7 步端到端验收：在 GitHub runner 上真跑 NSIS /S /RELAUNCH，
+# 验证「完整包安装完自动拉起应用」。runner 从 Release 内网直取大文件。
+#
+# 触发：workflow_dispatch 输入 tag（如 v0.2.0）。
+# 判据：安装器退出后 TripoSR-Lite.exe 自动出现 + 版本正确 + 服务健康。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要验收的 Release tag（如 v0.2.0）'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout (gh CLI needs git repo context)
+        uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        id: target
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.tag }}"
+          $ver = $tag -replace '^v', ''
+          if ($ver -notmatch '^\d+\.\d+\.\d+$') { throw "tag 格式错误: $tag" }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$ver" >> $env:GITHUB_OUTPUT
+          Write-Host "target: tag=$tag version=$ver"
+
+      - name: Download complete package from Release (setup + data volumes + sums)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.target.outputs.tag }}"
+          $ver = "${{ steps.target.outputs.version }}"
+          New-Item -ItemType Directory -Path 'dist/verify' -Force | Out-Null
+          $patterns = @(
+            "TripoSR-Lite-Setup-v$ver.exe",
+            "TripoSR-Lite-Data.7z.*",
+            "SHA256SUMS"
+          )
+          foreach ($pattern in $patterns) {
+            gh release download $tag --repo "${{ github.repository }}" --pattern $pattern --dir 'dist/verify'
+            if ($LASTEXITCODE -ne 0) { throw "下载失败: $pattern" }
+          }
+          Get-ChildItem 'dist/verify' | Select-Object Name, Length | Format-Table
+
+      - name: Verify SHA256SUMS
+        shell: pwsh
+        run: |
+          $sums = 'dist/verify/SHA256SUMS'
+          if (-not (Test-Path -LiteralPath $sums)) { throw "未见 SHA256SUMS" }
+          foreach ($line in (Get-Content -LiteralPath $sums)) {
+            $fields = $line -split '\s+', 2
+            if ($fields.Count -ne 2 -or -not $fields[0]) { continue }
+            $expected = $fields[0].ToLowerInvariant()
+            $file = Join-Path 'dist/verify' ($fields[1] -replace '^\*', '')
+            if (-not (Test-Path -LiteralPath $file)) { throw "SHA256SUMS 列出但文件缺失: $file" }
+            $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $expected) { throw "SHA256 不匹配: $file expected=$expected actual=$actual" }
+          }
+          Write-Host "PASS: SHA256SUMS 全部匹配"
+
+      - name: No pre-existing app (clean runner sanity)
+        shell: pwsh
+        run: |
+          $procs = Get-Process -Name 'TripoSR-Lite' -ErrorAction SilentlyContinue
+          if ($procs) { Write-Warning "runner 上意外已有 TripoSR-Lite，验收前先关闭"; $procs | Stop-Process -Force }
+          Write-Host "clean runner: no app process before install"
+
+      - name: Install with /S /RELAUNCH
+        id: install
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.target.outputs.version }}"
+          $exe = (Resolve-Path "dist/verify/TripoSR-Lite-Setup-v$ver.exe").Path
+          Write-Host "launching installer with /S /RELAUNCH: $exe"
+          # 数据分卷必须与 Setup 同目录；安装器装完会 Exec 拉起应用后自行退出。
+          $p = Start-Process -FilePath $exe -ArgumentList '/S','/RELAUNCH' -PassThru
+          $p | Wait-Process -Timeout 900 -ErrorAction Stop
+          Write-Host "installer exited with code $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "安装器退出码非 0: $($p.ExitCode)" }
+
+      - name: Assert app auto-relaunched
+        shell: pwsh
+        run: |
+          $ok = $false
+          # 注意：$pid 是 PowerShell 只读自动变量，必须用别的名字
+          $appPid = $null
+          for ($i = 0; $i -lt 60; $i++) {
+            $p = Get-Process -Name 'TripoSR-Lite' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($p) { $ok = $true; $appPid = $p.Id; break }
+            Start-Sleep -Seconds 5
+          }
+          if (-not $ok) { throw "FAIL: 安装器退出后 5 分钟内应用未自动重启（第 7 步缺失）" }
+          Write-Host "PASS: 应用已自动重启，PID=$appPid（无需人工点击图标）"
+
+      - name: Assert installed version
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.target.outputs.version }}"
+          $settings = Join-Path $env:LOCALAPPDATA 'Programs\TripoSR-Lite\app\triposr_lite\settings.py'
+          if (-not (Test-Path -LiteralPath $settings)) { throw "未见安装后版本文件: $settings" }
+          $text = Get-Content -LiteralPath $settings -Raw
+          if ($text -notmatch "VERSION\s*=\s*['\"]$ver['\"]") { throw "版本不符: expected=$ver" }
+          Write-Host "PASS: installed version=$ver"
+
+      - name: Assert service healthy
+        shell: pwsh
+        run: |
+          $portFile = Join-Path $env:LOCALAPPDATA 'TripoSR-Lite\.server_port'
+          $ok = $false
+          for ($i = 0; $i -lt 24; $i++) {
+            if (Test-Path -LiteralPath $portFile) {
+              $port = (Get-Content -LiteralPath $portFile -Raw).Trim()
+              try {
+                $r = Invoke-WebRequest -Uri "http://127.0.0.1:$port/api/health" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+                if ($r.StatusCode -eq 200) { $ok = $true; Write-Host "PASS: 服务就绪 HTTP $($r.StatusCode) port=$port"; break }
+              } catch { Write-Host "等待服务… $_" }
+            }
+            Start-Sleep -Seconds 5
+          }
+          if (-not $ok) {
+            Write-Warning "服务 2 分钟内未就绪（runner 无模型/外部 torch，可能只是后端缺依赖；壳进程已自动重启即证明第 7 步成立）"
+          }

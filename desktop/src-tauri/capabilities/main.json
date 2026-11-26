@@ -8,7 +8,9 @@
     "allow-get-app-info",
     "allow-get-startup-status",
     "allow-retry-start",
-    "allow-open-model-dir"
+    "allow-open-model-dir",
+    "allow-check-update",
+    "allow-install-update"
   ],
   "remote": {
     "urls": [

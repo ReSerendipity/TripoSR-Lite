@@ -82,3 +82,16 @@
 | `upload-list.json` | 待上传清单（文件名/字节/SHA256） |
 
 构建根：`D:/R5Build/TripoSR-Lite/`（`cargo-target`、`tmp`、`runtime`、`staging`、`dist`、`smoke`、`logs` 全在 D 盘；C 盘只落地最终 `%LOCALAPPDATA%` 安装态）。
+
+## 6. CLI 与更新路线契约（2026-11 新增）
+
+| 项 | 契约 |
+| --- | --- |
+| 全局命令 | 安装器复制 `triposr.cmd` 到 `$INSTDIR`、幂等注册 HKCU `Environment\Path` 并广播 `WM_SETTINGCHANGE`；卸载精确移除。开始菜单另有 CLI 快捷方式 |
+| CLI 入口 | `<inst>\app\app\integrated_app\cli.py`，由 `%APPROOT%\runtime\python.exe` 启动；Result 信封 / 语义退出码 0-3 / `--json` 任意位置 |
+| CLI 产物 | `results/cli/<job_id>/{mesh.obj,mesh.glb,summary.json}`；`TRIPOSR_CLI_RESULTS_DIR` 可覆盖 |
+| 端口文件 | 壳启动脚本写 `%LOCALAPPDATA%\TripoSR-Lite\.server_port`（纯数字，不入库）；CLI 服务发现 `--server` > `TRIPOSR_CLI_SERVER` > 端口文件，2s 探测，失败回落直调 |
+| 更新资产 | 只有一条完整包路线：Setup + 数据分卷 + `SHA256SUMS`，不再有代码增量 zip；Release 资产默认不动 |
+| 自更新第 7 步 | 更新器以 `/S /RELAUNCH` 启动安装器；NSIS 安装段末尾 `${StrStr} $CMDLINE` 命中后 `Exec` 主程序；Rust 侧 `installer_args()` 必须同时含 `/S` 与 `/RELAUNCH`，前端监听 `update-installing` |
+| 更新源 | 默认 `ReSerendipity/TripoSR-Lite`，`TRIPOSR_UPDATE_REPO` 可覆盖；发布前确认真实 slug |
+| 验收 | `pytest` + `ruff` + `mypy(app/integrated_app)` + `cargo test` + `cargo clippy -D warnings`；`.github/workflows/verify-relaunch.yml` 为端到端人工触发验收 |

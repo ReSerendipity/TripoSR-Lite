@@ -9,6 +9,8 @@ fn main() {
                 "get_startup_status",
                 "retry_start",
                 "open_model_dir",
+                "check_update",
+                "install_update",
             ]),
         ),
     )

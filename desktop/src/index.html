@@ -66,6 +66,8 @@
   dt { flex: none; width: 76px; color: var(--muted); }
   dd { margin: 0; word-break: break-all; color: #c9d9ea; }
   .hint { margin: 20px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+  .updates { margin-top: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .update-text { color: var(--muted); font-size: 12px; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -90,6 +92,11 @@
     <div class="actions" id="actions" hidden>
       <button id="retry">重试启动</button>
       <button id="openModel" class="secondary">打开模型目录</button>
+    </div>
+
+    <div class="updates">
+      <button id="checkUpdate" class="secondary">检查更新</button>
+      <span id="updateText" class="update-text"></span>
     </div>
 
     <dl class="meta">
@@ -182,6 +189,45 @@
           $("errorText").textContent = "打开目录失败：" + err;
           $("errorText").hidden = false;
         }
+      });
+
+      // 单一完整包路线：检查 → 用户二次点击授权 → 下载完整包 + 校验 →
+      // 应用有序退出 → NSIS /S /RELAUNCH 安装 → 安装器自动重启。
+      let pendingUpdate = null;
+      $("checkUpdate").addEventListener("click", async () => {
+        const btn = $("checkUpdate");
+        btn.disabled = true;
+        try {
+          if (!pendingUpdate) {
+            const info = await bridge.invoke("check_update");
+            if (!info) {
+              $("updateText").textContent = "已是最新版本";
+              return;
+            }
+            pendingUpdate = info;
+            $("updateText").textContent =
+              "发现 v" + info.version + "，再次点击下载完整包并安装（完成后自动重启）。";
+            btn.textContent = "安装更新";
+          } else {
+            $("updateText").textContent = "正在下载完整安装包与数据分卷…";
+            await bridge.invoke("install_update", { info: pendingUpdate });
+          }
+        } catch (err) {
+          $("updateText").textContent = "更新失败：" + err;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      await bridge.listen("update-progress", (event) => {
+        const payload = event.payload || {};
+        $("updateText").textContent =
+          "正在下载 " + (payload.file || "") + " (" + Math.round((payload.ratio || 0) * 100) + "%)";
+      });
+      await bridge.listen("update-installing", (event) => {
+        const payload = event.payload || {};
+        $("updateText").textContent =
+          payload.message || "应用即将关闭，安装程序将自动完成更新并重新启动。";
       });
     }
 

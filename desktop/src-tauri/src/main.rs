@@ -5,6 +5,7 @@ mod health_check;
 mod paths;
 mod port_manager;
 mod python_process;
+mod updater;
 mod window;
 
 use std::sync::{Arc, Mutex, OnceLock};
@@ -332,6 +333,22 @@ fn open_model_dir() -> Result<String, String> {
     Ok(dir.display().to_string())
 }
 
+/// 更新检查：返回 None 表示已是最新版；Release 资产不符合单一完整包契约时返回错误。
+#[tauri::command]
+async fn check_update() -> std::result::Result<Option<updater::UpdateInfo>, String> {
+    tauri::async_runtime::spawn_blocking(updater::check_update)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// 用户授权后调用：下载完整包 + SHA256 → 退出 → NSIS 静默安装并自动重启。
+#[tauri::command]
+async fn install_update(app: AppHandle, info: updater::UpdateInfo) -> std::result::Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || updater::install_update(app, info))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
 
@@ -503,6 +520,8 @@ fn main() {
             get_startup_status,
             retry_start,
             open_model_dir,
+            check_update,
+            install_update,
         ])
         .setup(setup)
         .build(tauri::generate_context!())

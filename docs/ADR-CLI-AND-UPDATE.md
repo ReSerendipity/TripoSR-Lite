@@ -108,6 +108,15 @@ S3 其余实现：新增端口文件（写侧在 `desktop_launch.py`，读侧在
 
 复核后确认是「零路线」而非「两条路线」。目标仍是**单一完整包路线**：官网与客户端检查更新给同一个 `TripoSR-Lite-Setup-v<version>.exe` + 同名 `.sha256`；本仓完整负载是 Setup + 7z 分卷组合，前端必须提示分卷与 Setup 同目录（不引入差分/增量双路线）。自更新七步中第 7 步由自写 NSIS 的 `/RELAUNCH` 参数完成。Release 资产默认不动。
 
+**实现与验收（2026-11-26/27）**：
+
+- `desktop/src-tauri/src/updater.rs` 从零实现：GitHub latest Release → 只认精确 Setup 名 + 所有 `TripoSR-Lite-Data.7z.*` + `SHA256SUMS`（增量 zip 被忽略）→ 流式下载并边下边算 SHA256 → 校验 → emit `update-installing` → `/S /RELAUNCH` 独立进程组启动安装器 → `std::process::exit(0)` 有序退出。版本比较按点分段补零；`TRIPOSR_UPDATE_REPO` / `TRIPOSR_UPDATES_DIR` 可覆盖。
+- 仓库 slug 默认 `ReSerendipity/TripoSR-Lite`（依据安装包 Publisher 与同家族命名；本仓 `git remote` 为空）。**发布前需用户确认真实 slug**——这是 Release 可达性的待确认项，不影响代码实现与静态验收。
+- `assets/port_relaunch.py` 无法直接移植：它前置断言 `updater.rs` 已存在且含旧提示文案，而本仓是零路线。改为按其契约手工做三处成对修改（Rust 传 `/RELAUNCH` ↔ NSIS `${StrStr} $CMDLINE` + `Exec` ↔ 前端 `update-installing` 监听），并由 `tests/test_update_contract.py` 钉住。
+- **L1 静态契约**：6 项 Python 测试全过；Rust 新增 5 项单测（版本比较、参数、资产解析正/反例、SHA256 校验），`cargo test` 22 passed、`cargo clippy -- -D warnings` 零告警。
+- **L2 NSIS 探针**：`tests/fixtures/relaunch_probe.nsi` 复用同一段 `${StrStr}` + `Exec` 模式，`makensis` 编译 0 error，运行 `/S /RELAUNCH` 生成 `relaunched` 标记；不加 `/RELAUNCH` 的负面对照不生成该标记。踩坑：Git Bash 调用安装器时 `/S` 会被 MSYS 转成 `S:/`，必须加 `MSYS_NO_PATHCONV=1`，否则安装器挂起并显示向导。
+- **L3 CI 端到端**：`.github/workflows/verify-relaunch.yml` 已写好（下载 Setup + 全部分卷 + SHA256SUMS → 校验 → `/S /RELAUNCH` → 断言进程自动出现 → 版本 → 端口文件健康），但本轮**只 commit 不 push、无 Release/tag**，未实跑；CI 首次运行需约 20 秒索引，`gh release download` 已带 checkout + `--repo`，PowerShell 用 `$appPid` 避开只读 `$pid`。
+
 ## 6. 验收纪律
 
 所有结论以命令输出、退出码、`json.loads`、pytest 数、墙钟时间为准；每阶段独立提交（本轮只 commit 不 push），提交前 pytest + ruff + 改动文件 mypy 净增 0 + `cargo test` / `cargo clippy -D warnings`。清理试探产物一律精确单文件路径。
