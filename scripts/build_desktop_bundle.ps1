@@ -445,7 +445,10 @@ foreach ($file in $artifacts) {
 }
 # LF 行尾：支持 Git Bash `sha256sum -c`
 [System.IO.File]::WriteAllText((Join-Path $distDir 'SHA256SUMS'), (($sumLines -join "`n") + "`n"), [System.Text.Encoding]::ASCII)
-$upload | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $distDir 'upload-list.json') -Encoding utf8
+# 显式 UTF-8 无 BOM：Windows PowerShell 5.1 的 Set-Content -Encoding utf8 会写 BOM，
+# 与既有 upload-list.json（无 BOM，json.load 可直接解析）不一致。
+$uploadJson = ($upload | ConvertTo-Json -Depth 4)
+[System.IO.File]::WriteAllText((Join-Path $distDir 'upload-list.json'), $uploadJson + "`n", ([System.Text.UTF8Encoding]::new($false)))
 $upload | Format-Table -AutoSize | Out-String -Width 220 | Write-Host
 
 $shaTool = 'C:\Program Files\Git\usr\bin\sha256sum.exe'
