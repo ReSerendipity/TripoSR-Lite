@@ -1,4 +1,5 @@
 # Local-only workspace artefacts
+backups/
 .venv/
 venv/
 env/

@@ -8,6 +8,11 @@
 Unicode true
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
+!include "StrFunc.nsh"
+; CLI 全局命令：PATH 幂等增删。安装段与卸载段分别 Using（不能混在同一个宏）。
+${Using:StrFunc} StrStr
+${Using:StrFunc} UnStrStr
+${Using:StrFunc} UnStrRep
 
 !define APP_NAME "TripoSR-Lite"
 !define APP_DISPLAY_NAME "TripoSR-Lite 单图重建工作台"
@@ -57,6 +62,70 @@ BrandingText "${APP_NAME}"
 Var TOOLSDIR
 Var DATADIR
 Var KEEP_DATA
+
+; ---------- CLI 全局命令：把 $INSTDIR 精确追加到当前用户 PATH（幂等）----------
+; 用 ";...;" 包裹后做整段匹配，避免 C:\Foo 命中 C:\FooBar。
+Function AddToUserPath
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  ReadRegStr $1 HKCU "Environment" "Path"
+  StrCpy $2 ";$1;"
+  ${StrStr} $3 "$2" ";$INSTDIR;"
+  ${If} $3 == ""
+    ${If} $1 == ""
+      StrCpy $1 "$INSTDIR"
+    ${Else}
+      StrCpy $0 "$1" 1 -1
+      ${If} $0 == ";"
+        StrCpy $1 "$1$INSTDIR"
+      ${Else}
+        StrCpy $1 "$1;$INSTDIR"
+      ${EndIf}
+    ${EndIf}
+    WriteRegExpandStr HKCU "Environment" "Path" "$1"
+    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+    DetailPrint "已将 CLI 命令目录加入当前用户 PATH: $INSTDIR"
+  ${Else}
+    DetailPrint "CLI 命令目录已在当前用户 PATH 中，跳过"
+  ${EndIf}
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+
+; ---------- 卸载：从当前用户 PATH 精确移除 $INSTDIR 条目 ----------
+Function un.RemoveFromUserPath
+  Push $0
+  Push $1
+  Push $2
+  ReadRegStr $1 HKCU "Environment" "Path"
+  StrCpy $2 ";$1;"
+  ${UnStrStr} $0 "$2" ";$INSTDIR;"
+  ${IfNot} $0 == ""
+    ${UnStrRep} $2 "$2" ";$INSTDIR;" ";"
+    ${UnStrRep} $2 "$2" ";$INSTDIR;" ";"
+    ${UnStrRep} $2 "$2" ";;" ";"
+    ${UnStrRep} $2 "$2" ";;" ";"
+    StrCpy $0 "$2" 1
+    ${If} $0 == ";"
+      StrCpy $2 "$2" "" 1
+    ${EndIf}
+    StrCpy $0 "$2" 1 -1
+    ${If} $0 == ";"
+      StrCpy $2 "$2" -1
+    ${EndIf}
+    WriteRegExpandStr HKCU "Environment" "Path" "$2"
+    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+    DetailPrint "已从当前用户 PATH 移除 CLI 命令目录: $INSTDIR"
+  ${EndIf}
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+
 
 ; ---------- 终止运行中的壳 ----------
 !macro KillRunning
@@ -156,6 +225,11 @@ Section "${APP_DISPLAY_NAME}" SEC_APP
     Abort
   ${EndIf}
 
+  ; CLI 全局命令：shim 放在安装根目录（PATH 加入的是这一层）
+  SetOutPath "$INSTDIR"
+  File "triposr.cmd"
+  Call AddToUserPath
+
   ; 用户数据目录（模型/结果/日志）安装期创建，覆盖安装保留
   CreateDirectory "${USER_DATA_DIR}"
   CreateDirectory "${USER_DATA_DIR}\models"
@@ -167,6 +241,8 @@ Section "${APP_DISPLAY_NAME}" SEC_APP
   CreateDirectory "$SMPROGRAMS\${APP_DISPLAY_NAME}"
   CreateShortcut "$SMPROGRAMS\${APP_DISPLAY_NAME}\${APP_DISPLAY_NAME}.lnk" "$INSTDIR\${APP_EXE}"
   CreateShortcut "$DESKTOP\${APP_DISPLAY_NAME}.lnk" "$INSTDIR\${APP_EXE}"
+  ; CLI 快捷方式：打开命令行窗口显示帮助
+  CreateShortcut "$SMPROGRAMS\${APP_DISPLAY_NAME}\TripoSR-Lite CLI.lnk" "$SYSDIR\cmd.exe" '/k "$INSTDIR\triposr.cmd" --help'
 
   ; HKCU 注册
   WriteRegStr HKCU "${APP_REG_KEY}" "InstallDir" "$INSTDIR"
@@ -200,8 +276,11 @@ Section "Uninstall"
 
   Delete "$DESKTOP\${APP_DISPLAY_NAME}.lnk"
   Delete "$SMPROGRAMS\${APP_DISPLAY_NAME}\${APP_DISPLAY_NAME}.lnk"
+  Delete "$SMPROGRAMS\${APP_DISPLAY_NAME}\TripoSR-Lite CLI.lnk"
   RMDir "$SMPROGRAMS\${APP_DISPLAY_NAME}"
 
+  ; CLI 全局命令：删注册表键前先从当前用户 PATH 精确移除安装目录
+  Call un.RemoveFromUserPath
   DeleteRegKey HKCU "${APP_REG_KEY}"
   DeleteRegKey HKCU "${UNINST_KEY}"
 
@@ -215,6 +294,7 @@ Section "Uninstall"
 
   ; 只删程序：app/ 代码与两套 runtime、壳 exe、卸载器
   RMDir /r "$INSTDIR\app"
+  Delete "$INSTDIR\triposr.cmd"
   Delete "$INSTDIR\${APP_EXE}"
   Delete "$INSTDIR\uninstall.exe"
   RMDir /r "$INSTDIR"
