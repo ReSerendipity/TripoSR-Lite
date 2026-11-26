@@ -115,6 +115,16 @@ function Find-Standalone7za([string]$Explicit) {
 function Get-ShellVersion([string]$ExePath) {
     return (Get-Item -LiteralPath $ExePath).VersionInfo.ProductVersion
 }
+# 不依赖 Get-FileHash（Windows PowerShell 5.1 会话里该模块函数可能不可用）；
+# 直接用 .NET 流式计算，1.9GB 分卷也不会整文件进内存。
+function Get-Sha256([string]$Path) {
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try { $hashBytes = $sha.ComputeHash($stream) } finally { $sha.Dispose() }
+    } finally { $stream.Dispose() }
+    return ([BitConverter]::ToString($hashBytes) -replace '-', '').ToLowerInvariant()
+}
 function Get-PyvenvHome([string]$VenvDir) {
     $cfg = Join-Path $VenvDir 'pyvenv.cfg'
     if (-not (Test-Path -LiteralPath $cfg)) { throw "找不到 pyvenv.cfg：$cfg" }
@@ -455,7 +465,7 @@ $artifacts += $volumes
 $sumLines = @()
 $upload = @()
 foreach ($file in $artifacts) {
-    $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLower()
+    $hash = Get-Sha256 $file.FullName
     $sumLines += "$hash  $($file.Name)"
     $upload += [pscustomobject]@{ file = $file.Name; bytes = $file.Length; sha256 = $hash }
 }
