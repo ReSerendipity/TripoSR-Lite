@@ -182,8 +182,8 @@ Write-Host '=============================================='
 
 # ------------------------------------------------------- 版本三件套 ----
 Write-Step '[门禁] 版本三件套与主仓一致'
-$pkgVersion = (Get-Content -LiteralPath (Join-Path $Root 'desktop\package.json') -Raw | ConvertFrom-Json).version
-$confVersion = (Get-Content -LiteralPath (Join-Path $Root 'desktop\src-tauri\tauri.conf.json') -Raw | ConvertFrom-Json).version
+$pkgVersion = (Get-Content -LiteralPath (Join-Path $Root 'desktop\package.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
+$confVersion = (Get-Content -LiteralPath (Join-Path $Root 'desktop\src-tauri\tauri.conf.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
 $cargoVersion = [regex]::Match(
     (Get-Content -LiteralPath (Join-Path $Root 'desktop\src-tauri\Cargo.toml') -Raw -Encoding UTF8),
     '(?m)^version\s*=\s*"([^"]+)"'
